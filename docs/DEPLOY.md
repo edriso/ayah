@@ -31,7 +31,9 @@ Set these env vars on the host (see the single root `.env.example`):
 - `BOT_TOKEN`     from @BotFather
 - `TZ_NAME`       default timezone for new subscribers, e.g. Africa/Cairo
 - `ADMIN_TELEGRAM_ID`  optional, unlocks /admin_* for you
-- `NODE_ENV=production`
+- `NODE_ENV`  defaults to `production` in `.env.example` and in the Docker
+  image, so you usually do not need to touch it. (`pnpm dev` always runs in
+  development mode regardless, for local work.)
 
 ## With Docker
 

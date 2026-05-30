@@ -5,7 +5,7 @@
   "type": "module",
   "main": "src/index.ts",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
+    "dev": "cross-env NODE_ENV=development tsx watch src/index.ts",
     "start": "node --import tsx src/index.ts",
     "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
@@ -15,7 +15,6 @@
   "dependencies": {
     "@ayah/core": "workspace:*",
     "@ayah/database": "workspace:*",
-    "dotenv": "^17.4.2",
     "grammy": "^1.42.0",
     "node-cron": "^4.2.1",
     "tsx": "^4.19.2"
@@ -23,6 +22,7 @@
   "devDependencies": {
     "@types/node": "^22.10.5",
     "@types/node-cron": "^3.0.11",
+    "cross-env": "^7.0.3",
     "typescript": "^5.7.3",
     "vitest": "^4.1.7"
   }

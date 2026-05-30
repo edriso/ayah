@@ -83,6 +83,12 @@ real changes go through a migration so production stays in step.
   (the folder with `pnpm-workspace.yaml`) no matter where the command runs.
   `prisma.config.ts` has the same loader inline (the Prisma CLI loads that
   file on its own, so it cannot import from core).
+- `NODE_ENV` defaults to `production` (in `.env.example` and the Docker
+  image). `pnpm dev` sets `NODE_ENV=development` itself, so local work always
+  runs in development mode (debug logs, and the Prisma client is stashed on
+  `globalThis` so `tsx watch` reloads do not leak DB connections) no matter
+  what `.env` says. dotenv does not override an already-set variable, so the
+  value from `pnpm dev` wins over `.env`.
 - Prisma 7 does not read `.env` on its own and does not take the URL in the
   schema. The CLI gets the URL from `prisma.config.ts`; the running bot
   builds its own client in `src/client.ts`.

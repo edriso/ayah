@@ -24,10 +24,17 @@ COPY apps/telegram/package.json ./apps/telegram/
 COPY packages/database/prisma ./packages/database/prisma
 COPY packages/database/prisma.config.ts ./packages/database/
 
+# Install ALL dependencies (the postinstall `prisma generate` and tsx need
+# them). We set NODE_ENV to production AFTER this so the install does not skip
+# anything.
 RUN pnpm install --frozen-lockfile
 
 # Copy the rest of the source (including the committed Quran data file).
 COPY . .
+
+# This image is the production artifact, so default to production for runtime.
+# An operator can still override it with `-e NODE_ENV=...` if ever needed.
+ENV NODE_ENV=production
 
 # Drop root for runtime. The bot writes nothing to disk; logs go to stdout.
 USER node
