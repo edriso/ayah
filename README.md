@@ -1,9 +1,10 @@
 # Ayah
 
 A Telegram bot that helps people memorize the Quran. It sends one ayah a
-day to each subscriber, together with the last ten ayat of the same surah
-for review. Each person picks the days and the time they want, and can take
-a break whenever they need to.
+day to each subscriber, together with the previous ayat of the same surah
+for review (how many is up to each person: 0 to 20, default 10). Each person
+picks the days and the time they want, and can take a break whenever they
+need to.
 
 The bot text is in Arabic. The code and docs are in English so any
 developer can work on it.
@@ -84,6 +85,10 @@ refuses to write anything that does not match.
 - `/resume` come back from a break
 - `/settings` show your current settings
 - `/help` help
+
+Sending `/time` or `/timezone` with no argument shows tap-to-pick buttons
+(common times and cities), so a non-technical user never has to type a format
+or an IANA name. Times and counts accept Arabic-Indic digits too.
 
 ## Useful scripts
 

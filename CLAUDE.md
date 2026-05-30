@@ -6,7 +6,8 @@ purpose. The aim is that a junior developer can read this and be productive.
 ## What this is
 
 Ayah is a Telegram bot that sends one Quran ayah a day to each subscriber,
-with the last ten ayat of the same surah for review. It is a pnpm workspace:
+with the previous ayat of the same surah for review (a per-user count, 0-20,
+default 10). It is a pnpm workspace:
 
 - `packages/core` pure logic, no database, no network. Fully unit-tested.
 - `packages/database` Prisma schema, the client, and services.
@@ -105,4 +106,4 @@ real changes go through a migration so production stays in step.
 - Surah names and revelation: `packages/database/src/reference/surahs.ts`
 - Ayah count oracle: `packages/database/src/reference/ayah-counts.ts`
 - Message wording (Arabic): `apps/telegram/src/lib/copy.ts`
-- The "last 10" and "next position" math: `packages/core/src/review.ts`
+- The review-range (previous ayat) and next-position math: `packages/core/src/review.ts`

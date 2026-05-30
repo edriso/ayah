@@ -17,8 +17,8 @@ Suggested steps when we build it:
 - Add a `kind` field to `Subscriber` ("user" or "channel"), or a small
   separate `ChannelSubscriber` row that reuses the same delivery code.
 - Store the channel chat id and post with the same scheduler.
-- Decide whether the channel post includes the last-ten review block or only
-  the single daily ayah.
+- Decide whether the channel post includes the review block or only the
+  single daily ayah.
 
 The delivery engine (`deliverDueSubscribers`) and the curriculum logic would
 not need to change, because they already work on "a target with a position in
@@ -28,7 +28,7 @@ a track".
 
 The whole point of the `core` and `database` packages is that the brain is
 written once. A Discord app would live in `apps/discord`, use discord.js, and
-call the same services. The daily logic, the track walking, and the "last 10"
+call the same services. The daily logic, the track walking, and the review
 query are all reused.
 
 ## More tracks
