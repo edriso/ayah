@@ -1,0 +1,59 @@
+{
+  "name": "ayah",
+  "version": "1.0.0",
+  "private": true,
+  "license": "0BSD",
+  "description": "Ayah: a Telegram bot that helps people memorize the Quran by sending one ayah a day plus the last ten ayat of the same surah.",
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @ayah/telegram dev",
+    "build": "pnpm --filter @ayah/telegram build",
+    "start": "pnpm --filter @ayah/telegram start",
+    "db:generate": "pnpm --filter @ayah/database db:generate",
+    "db:push": "pnpm --filter @ayah/database db:push",
+    "db:migrate": "pnpm --filter @ayah/database db:migrate",
+    "db:deploy": "pnpm --filter @ayah/database db:deploy",
+    "db:studio": "pnpm --filter @ayah/database db:studio",
+    "data:fetch": "pnpm --filter @ayah/database data:fetch",
+    "db:seed": "pnpm --filter @ayah/database db:seed",
+    "typecheck": "pnpm -r exec tsc --noEmit",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "test": "pnpm -r test",
+    "format": "prettier --write \"**/*.{ts,js,mjs,json,yml,yaml}\"",
+    "format:check": "prettier --check \"**/*.{ts,js,mjs,json,yml,yaml}\"",
+    "check": "pnpm typecheck && pnpm lint && pnpm test",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "*.{ts,js,mjs}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,yml,yaml}": [
+      "prettier --write"
+    ]
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@prisma/client",
+      "@prisma/engines",
+      "esbuild",
+      "prisma"
+    ]
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.18.0",
+    "eslint": "^9.18.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.5",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.1.2",
+    "prettier": "^3.8.3",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.59.4"
+  }
+}

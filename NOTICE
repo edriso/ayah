@@ -1,0 +1,24 @@
+Ayah bot — third-party content notice
+=====================================
+
+The Quran text used by this project is the Uthmani text from the Tanzil
+project (https://tanzil.net). It was downloaded with `pnpm data:fetch`
+and is stored, unchanged, at:
+
+    packages/database/prisma/data/quran-uthmani.json
+
+Tanzil Quran Text
+Copyright (C) 2007-2024 Tanzil Project
+License: the Tanzil terms of use (https://tanzil.net/docs/tanzil_license)
+
+In short, the Tanzil terms allow you to copy and share the Quran text
+without change, as long as you:
+
+  - do not modify the text in any way,
+  - clearly state Tanzil as the source, and
+  - link back to https://tanzil.net.
+
+This project does all three. The text is treated as read-only data: it is
+verified on download (6236 ayat, correct count per surah) and is never
+edited by application code. The software itself is under the 0BSD license
+in the LICENSE file; this NOTICE covers only the bundled Quran text.
