@@ -24,6 +24,18 @@ export function ayahMarker(numberInSurah: number): string {
   return `﴿${toArabicDigits(numberInSurah)}﴾`;
 }
 
+/**
+ * Arabic-correct phrase for "the last N ayat", following number-noun
+ * agreement (singular for 1, dual for 2, plural آيات for 3-10, singular آية
+ * for 11+). The count digit is shown only from 3 up, where it reads naturally.
+ */
+export function reviewCountPhrase(count: number): string {
+  if (count === 1) return 'آخر آية';
+  if (count === 2) return 'آخر آيتين';
+  if (count <= 10) return `آخر ${toArabicDigits(count)} آيات`;
+  return `آخر ${toArabicDigits(count)} آية`;
+}
+
 /** Render one ayah line: the text followed by its numbered marker. */
 export function formatAyahLine(ayah: DisplayAyah): string {
   return `${ayah.text} ${ayahMarker(ayah.numberInSurah)}`;
@@ -64,7 +76,7 @@ export function formatDailyMessages(input: DailyMessageInput): string[] {
 
   if (review.length === 0) return [todayBlock];
 
-  const header = `📖 للمراجعة (آخر ${toArabicDigits(review.length)} آيات من سورة ${surah.nameAr})`;
+  const header = `📖 للمراجعة (${reviewCountPhrase(review.length)} من سورة ${surah.nameAr})`;
   const lines = review.map(formatAyahLine);
 
   // Happy path: everything fits in one message, keep it as one.

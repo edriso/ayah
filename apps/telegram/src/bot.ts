@@ -1,5 +1,11 @@
 import { Bot, type Context } from 'grammy';
-import { toggleDay, activeDaysList, clampReviewCount, MAX_REVIEW_COUNT } from '@ayah/core';
+import {
+  toggleDay,
+  activeDaysList,
+  clampReviewCount,
+  MAX_REVIEW_COUNT,
+  toAsciiDigits,
+} from '@ayah/core';
 import {
   ensureSubscriber,
   setActiveDays,
@@ -15,6 +21,8 @@ import { COPY, settingsSummary, formatTimeAr, daysSummaryAr } from './lib/copy';
 import { previewCurrent } from './lib/deliver';
 import { runDeliveryOnce } from './scheduler';
 import { buildDaysKeyboard, DAY_TOGGLE_PREFIX, DAYS_DONE } from './lib/days-keyboard';
+import { buildTimeKeyboard, TIME_PICK_PREFIX } from './lib/time-keyboard';
+import { buildTimezoneKeyboard, TZ_PICK_PREFIX, COMMON_TIMEZONES } from './lib/timezone-keyboard';
 import { parseTime, isValidTimezone } from './lib/parse';
 
 const bot = new Bot<Context>(config.botToken);
@@ -55,8 +63,20 @@ bot.command('today', async (ctx) => {
   const sub = await subscriberFor(ctx);
   if (!sub) return;
   const messages = await previewCurrent(sub);
-  if (messages.length === 0) return void ctx.reply(COPY.brokenOrNotStarted);
+  if (messages.length === 0) {
+    // On the looping kids track this should never happen for a real user; if
+    // it does, it is a data fault (a dangling currentEntryId). Log it so it is
+    // visible rather than silent.
+    logger.warn('previewCurrent returned no messages', {
+      subscriberId: sub.id,
+      trackId: sub.trackId,
+      currentEntryId: sub.currentEntryId,
+    });
+    return void ctx.reply(COPY.brokenOrNotStarted);
+  }
   for (const message of messages) await ctx.reply(message);
+  // Remind a paused user of their state, since /today works while paused.
+  if (sub.pausedAt) await ctx.reply(COPY.pausedHint);
 });
 
 // /review N: set how many previous ayat to include for review (0..20).
@@ -65,33 +85,35 @@ bot.command('review', async (ctx) => {
   if (!sub) return;
   const arg = commandArg(ctx, 'review');
   if (!arg) return void ctx.reply(COPY.reviewUsage(sub.reviewCount));
-  const parsed = Number(arg);
-  if (!Number.isInteger(parsed) || parsed < 0 || parsed > MAX_REVIEW_COUNT) {
+  // Accept Arabic-Indic digits, and only a plain 1-2 digit number (no hex,
+  // exponent, or sign sneaking through Number()).
+  const normalized = toAsciiDigits(arg.trim());
+  if (!/^\d{1,2}$/.test(normalized) || Number(normalized) > MAX_REVIEW_COUNT) {
     return void ctx.reply(COPY.reviewInvalid);
   }
-  const count = clampReviewCount(parsed);
+  const count = clampReviewCount(Number(normalized));
   await setReviewCount(sub.id, count);
   await ctx.reply(COPY.reviewUpdated(count));
 });
 
-// /time HH:MM
+// /time: with an argument, set the time directly; with none, offer buttons.
 bot.command('time', async (ctx) => {
   const sub = await subscriberFor(ctx);
   if (!sub) return;
   const arg = commandArg(ctx, 'time');
-  if (!arg) return void ctx.reply(COPY.timeUsage);
+  if (!arg) return void ctx.reply(COPY.timePrompt, { reply_markup: buildTimeKeyboard() });
   const parsed = parseTime(arg);
   if (!parsed) return void ctx.reply(COPY.timeInvalid);
   await setDeliveryTime(sub.id, parsed.hour, parsed.minute);
-  await ctx.reply(COPY.timeUpdated(formatTimeAr(parsed.hour, parsed.minute)));
+  await ctx.reply(COPY.timeUpdated(formatTimeAr(parsed.hour, parsed.minute), sub.timezone));
 });
 
-// /timezone Area/City
+// /timezone: with an argument, set it directly; with none, offer city buttons.
 bot.command('timezone', async (ctx) => {
   const sub = await subscriberFor(ctx);
   if (!sub) return;
   const arg = commandArg(ctx, 'timezone');
-  if (!arg) return void ctx.reply(COPY.tzUsage);
+  if (!arg) return void ctx.reply(COPY.tzPrompt, { reply_markup: buildTimezoneKeyboard() });
   if (!isValidTimezone(arg)) return void ctx.reply(COPY.tzInvalid);
   await setTimezone(sub.id, arg);
   await ctx.reply(COPY.tzUpdated(arg));
@@ -115,7 +137,11 @@ bot.command('resume', async (ctx) => {
   const sub = await subscriberFor(ctx);
   if (!sub) return;
   const cleared = await resumeSubscriber(sub.id);
-  await ctx.reply(cleared ? COPY.resumed : COPY.alreadyActive);
+  if (cleared) return void ctx.reply(COPY.resumed);
+  // Not paused. If they will still get nothing because they have no active
+  // days, point them at the real blocker instead of claiming "already active".
+  if (activeDaysList(sub.activeDays).length === 0) return void ctx.reply(COPY.daysNone);
+  await ctx.reply(COPY.alreadyActive);
 });
 
 // ─── Day-picker buttons ─────────────────────────────────────────────
@@ -134,12 +160,40 @@ bot.callbackQuery(new RegExp(`^${DAY_TOGGLE_PREFIX}([1-7])$`), async (ctx) => {
 bot.callbackQuery(DAYS_DONE, async (ctx) => {
   const sub = await subscriberFor(ctx);
   if (!sub) return void ctx.answerCallbackQuery();
-  const summary =
-    activeDaysList(sub.activeDays).length === 0
-      ? COPY.daysNone
-      : COPY.daysUpdated(daysSummaryAr(sub.activeDays));
+  if (activeDaysList(sub.activeDays).length === 0) {
+    // Keep the keyboard up so they can pick a day right here, instead of
+    // dismissing it and forcing them to run /days again.
+    await ctx.reply(COPY.daysNone);
+    return void ctx.answerCallbackQuery();
+  }
   await ctx.editMessageReplyMarkup(); // remove the keyboard
-  await ctx.reply(summary);
+  await ctx.reply(COPY.daysUpdated(daysSummaryAr(sub.activeDays)));
+  await ctx.answerCallbackQuery();
+});
+
+// ─── Time-picker buttons ────────────────────────────────────────────
+
+bot.callbackQuery(new RegExp(`^${TIME_PICK_PREFIX}(\\d{2})(\\d{2})$`), async (ctx) => {
+  const sub = await subscriberFor(ctx);
+  if (!sub) return void ctx.answerCallbackQuery();
+  const hour = Number(ctx.match![1]);
+  const minute = Number(ctx.match![2]);
+  await setDeliveryTime(sub.id, hour, minute);
+  await ctx.editMessageReplyMarkup(); // remove the keyboard
+  await ctx.reply(COPY.timeUpdated(formatTimeAr(hour, minute), sub.timezone));
+  await ctx.answerCallbackQuery();
+});
+
+// ─── Timezone-picker buttons ────────────────────────────────────────
+
+bot.callbackQuery(new RegExp(`^${TZ_PICK_PREFIX}(\\d+)$`), async (ctx) => {
+  const sub = await subscriberFor(ctx);
+  if (!sub) return void ctx.answerCallbackQuery();
+  const tz = COMMON_TIMEZONES[Number(ctx.match![1])]?.iana;
+  if (!tz) return void ctx.answerCallbackQuery();
+  await setTimezone(sub.id, tz);
+  await ctx.editMessageReplyMarkup(); // remove the keyboard
+  await ctx.reply(COPY.tzUpdated(tz));
   await ctx.answerCallbackQuery();
 });
 

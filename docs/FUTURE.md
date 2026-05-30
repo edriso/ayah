@@ -70,6 +70,29 @@ oddly in the middle of a single-ayah message. The checks in `fetch-quran.ts`
 
 ## Per-track review window
 
-The review window is fixed at ten ayat (`REVIEW_WINDOW` in
-`packages/core/src/review.ts`). It is already a parameter, so a per-track or
-per-user window would be a small change.
+The PER-USER review count already ships: each subscriber sets it with
+`/review N` (0 to 20, default 10, stored in `Subscriber.reviewCount`; see
+`DEFAULT_REVIEW_COUNT` / `MIN_REVIEW_COUNT` / `MAX_REVIEW_COUNT` in
+`packages/core/src/review.ts`). What is NOT done yet is making the default or
+the cap depend on the TRACK, so a future "adults" track could review more by
+default. That would be a small change to where the default is read.
+
+## Progress indicator
+
+A "how far have I come" view (e.g. a `/progress` command) is motivating for
+memorization. It is deferred on purpose: the kids track is the whole Quran
+(6236 ayat) at one ayah a day, so a raw "ayah 12 of 6236" or "0.2%" would
+discourage more than help. A good version needs a kinder framing (for example
+progress within the current surah, or "you have memorized N ayat so far") and
+should be designed before building. The data is available (`TrackEntry.position`
+and `countTrackEntries`).
+
+## Khatma completion celebration
+
+When a subscriber finishes the whole Quran and the looping track wraps back to
+An-Nas, a one-time "mabrook, you completed a khatma" banner would be a lovely
+moment. It is deferred because at one ayah a day a full loop takes about 17
+years, so it is effectively unreachable today; it becomes worth building if a
+shorter track (e.g. Juz Amma only) ships. It would need a way to detect the
+wrap-around (e.g. a `khatmaCount` field or checking for a delivery of the last
+entry) so the banner shows once per khatma.

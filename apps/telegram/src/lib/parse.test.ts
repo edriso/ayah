@@ -11,6 +11,11 @@ describe('parseTime', () => {
     expect(parseTime('7:05')).toEqual({ hour: 7, minute: 5 });
   });
 
+  it('accepts Arabic-Indic digits (what the Arabic keyboard types)', () => {
+    expect(parseTime('٠٧:٠٠')).toEqual({ hour: 7, minute: 0 });
+    expect(parseTime('٢٣:٥٩')).toEqual({ hour: 23, minute: 59 });
+  });
+
   it('rejects out-of-range and malformed input', () => {
     expect(parseTime('24:00')).toBeNull();
     expect(parseTime('07:60')).toBeNull();

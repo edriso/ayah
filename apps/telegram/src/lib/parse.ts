@@ -1,9 +1,15 @@
 // Small pure parsers for command arguments. Kept apart from bot.ts so they
 // can be unit-tested without loading grammY or the database client.
 
-/** Parse "HH:MM" (24-hour) into hour/minute, or null if invalid. */
+import { toAsciiDigits } from '@ayah/core';
+
+/**
+ * Parse "HH:MM" (24-hour) into hour/minute, or null if invalid. Arabic-Indic
+ * and Persian digits are accepted (the bot shows times in Arabic-Indic, so
+ * users naturally type them back).
+ */
 export function parseTime(raw: string): { hour: number; minute: number } | null {
-  const m = raw.trim().match(/^(\d{1,2}):(\d{2})$/);
+  const m = toAsciiDigits(raw.trim()).match(/^(\d{1,2}):(\d{2})$/);
   if (!m) return null;
   const hour = Number(m[1]);
   const minute = Number(m[2]);

@@ -34,10 +34,17 @@ export function daysSummaryAr(mask: number): string {
   return days.map(dayNameAr).join('، ');
 }
 
-/** Describe the review count for the settings view. */
+/**
+ * Describe the review count for the settings view, with correct Arabic
+ * number-noun agreement (singular for 1, dual for 2, plural for 3-10,
+ * singular again for 11+).
+ */
 export function reviewSummaryAr(reviewCount: number): string {
   if (reviewCount === 0) return 'بدون مراجعة (آية اليوم فقط)';
-  return `${toArabicDigits(reviewCount)} آيات سابقة`;
+  if (reviewCount === 1) return 'آية سابقة واحدة';
+  if (reviewCount === 2) return 'آيتان سابقتان';
+  if (reviewCount <= 10) return `${toArabicDigits(reviewCount)} آيات سابقة`;
+  return `${toArabicDigits(reviewCount)} آية سابقة`;
 }
 
 export interface SettingsView {
@@ -50,7 +57,13 @@ export interface SettingsView {
 }
 
 export function settingsSummary(s: SettingsView): string {
-  const status = s.pausedAt ? 'متوقف مؤقتًا (راحة) ⏸️' : 'يعمل ✅';
+  // The status reflects what will ACTUALLY happen: a break, or no chosen days,
+  // both mean no ayat arrive. We do not show "working" when nothing will come.
+  let status: string;
+  if (s.pausedAt) status = 'في وضع الراحة ⏸️';
+  else if (activeDaysList(s.activeDays).length === 0) status = 'لن تصلك آيات (لم تختر أي يوم) ⚠️';
+  else status = 'يعمل ✅';
+
   return [
     'إعداداتك الحالية:',
     `• الحالة: ${status}`,
@@ -66,22 +79,15 @@ export const COPY = {
     [
       'السلام عليكم ورحمة الله 🌿',
       '',
-      'مرحبًا بك في بوت "آية". سيصلك كل يوم آية جديدة للحفظ، ومعها آيات سابقة من نفس السورة للمراجعة، بإذن الله.',
+      'مرحبًا بك في بوت "آية". أنت الآن مسجَّل، وستتقدّم آية واحدة كل يوم بإذن الله، نبدأ من سورة الناس ونمضي إلى الفاتحة.',
       '',
-      'نبدأ من سورة الناس ونمضي إلى الفاتحة (الترتيب المناسب للأطفال والمبتدئين).',
+      'ستصلك أول آية في وقت الإرسال المحدّد أدناه، أو الآن مباشرة إن كان وقتها قد حان اليوم.',
+      '👈 لرؤية آيتك الآن اضغط /today',
       '',
       settings,
       '',
-      'الأوامر:',
-      '/today — عرض آية اليوم الآن',
-      '/time — ضبط وقت الإرسال',
-      '/days — اختيار أيام الإرسال',
-      '/review — عدد آيات المراجعة',
-      '/timezone — ضبط المنطقة الزمنية',
-      '/break — أخذ راحة (إيقاف الإرسال)',
-      '/resume — العودة من الراحة',
-      '/settings — عرض إعداداتك',
-      '/help — المساعدة',
+      'إن وصلتك الآية في وقت غير متوقَّع فقد تختلف منطقتك الزمنية، اضبطها عبر /timezone.',
+      'ولعرض كل الأوامر اكتب /help',
     ].join('\n'),
 
   help: [
@@ -98,19 +104,20 @@ export const COPY = {
     '/settings — عرض إعداداتك الحالية',
   ].join('\n'),
 
-  brokenOrNotStarted:
-    'لم نتمكن من تجهيز آية لك الآن. إن كنت قد أنهيت الختمة فأبشر، وإلا فحاول لاحقًا بإذن الله.',
+  brokenOrNotStarted: 'لم نتمكن من تجهيز آية لك الآن، حاول لاحقًا بإذن الله.',
 
   paused: 'تم إيقاف الإرسال مؤقتًا. خذ راحتك 🌿 وعندما تعود اكتب /resume لتكمل من حيث توقفت.',
   alreadyPaused: 'أنت في وضع الراحة بالفعل. اكتب /resume عندما تريد العودة.',
   resumed: 'أهلًا بعودتك 🌿 سنكمل من حيث توقفت بإذن الله.',
   alreadyActive: 'أنت لست في وضع الراحة. الإرسال يعمل بالفعل ✅',
+  pausedHint: 'تذكير: أنت في وضع الراحة الآن، فلن تصلك الآيات تلقائيًا. اكتب /resume للعودة.',
 
-  timeUsage: 'لضبط الوقت اكتب: /time HH:MM\nمثال: /time 07:00',
+  timePrompt: 'اختر وقت الإرسال من الأزرار، أو اكتبه يدويًا بصيغة /time HH:MM (مثال: /time 07:00):',
   timeInvalid: 'صيغة الوقت غير صحيحة. اكتب الوقت بصيغة ٢٤ ساعة، مثال: /time 07:00',
-  timeUpdated: (t: string) => `تم ضبط وقت الإرسال على ${t} بتوقيتك المحلي ✅`,
+  timeUpdated: (t: string, tz: string) =>
+    `تم ضبط وقت الإرسال على ${t} حسب منطقتك (${tz}) ✅\nإن لم تكن منطقتك صحيحة فاضبطها عبر /timezone.`,
 
-  tzUsage: 'لضبط المنطقة الزمنية اكتب: /timezone Area/City\nمثال: /timezone Africa/Cairo',
+  tzPrompt: 'اختر منطقتك الزمنية من المدن التالية، أو اكتب /timezone Area/City إن لم تجد مدينتك:',
   tzInvalid: 'اسم المنطقة الزمنية غير صحيح. مثال صحيح: Africa/Cairo',
   tzUpdated: (tz: string) => `تم ضبط المنطقة الزمنية على ${tz} ✅`,
 

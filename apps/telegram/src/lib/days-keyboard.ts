@@ -18,6 +18,8 @@ export function buildDaysKeyboard(mask: number): InlineKeyboard {
     kb.text(`${mark}${dayNameAr(iso)}`, `${DAY_TOGGLE_PREFIX}${iso}`);
     if (iso % 2 === 0) kb.row();
   }
-  kb.row().text('تم ✔️', DAYS_DONE);
+  // Plain "تم" so the screen does not show two different check glyphs (the ✅
+  // already means "this day is selected").
+  kb.row().text('تم', DAYS_DONE);
   return kb;
 }

@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { formatDailyMessages, ayahMarker, formatAyahLine, TELEGRAM_MAX } from './format';
+import {
+  formatDailyMessages,
+  ayahMarker,
+  formatAyahLine,
+  reviewCountPhrase,
+  TELEGRAM_MAX,
+} from './format';
 import { toArabicDigits } from './arabic';
 
 const surah = { number: 112, nameAr: 'الإخلاص' };
@@ -19,6 +25,17 @@ describe('arabic helpers', () => {
     expect(formatAyahLine({ numberInSurah: 1, text: 'قُلْ هُوَ ٱللَّهُ أَحَدٌ' })).toBe(
       'قُلْ هُوَ ٱللَّهُ أَحَدٌ ﴿١﴾',
     );
+  });
+});
+
+describe('reviewCountPhrase (Arabic number-noun agreement)', () => {
+  it('uses singular for 1, dual for 2, plural for 3-10, singular for 11+', () => {
+    expect(reviewCountPhrase(1)).toBe('آخر آية');
+    expect(reviewCountPhrase(2)).toBe('آخر آيتين');
+    expect(reviewCountPhrase(3)).toBe('آخر ٣ آيات');
+    expect(reviewCountPhrase(10)).toBe('آخر ١٠ آيات');
+    expect(reviewCountPhrase(11)).toBe('آخر ١١ آية');
+    expect(reviewCountPhrase(20)).toBe('آخر ٢٠ آية');
   });
 });
 
