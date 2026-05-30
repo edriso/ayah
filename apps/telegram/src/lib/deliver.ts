@@ -1,5 +1,5 @@
 import type { Bot, Context } from 'grammy';
-import { dueLocalDate, formatDailyMessage } from '@ayah/core';
+import { dueLocalDate, formatDailyMessages } from '@ayah/core';
 import {
   listDeliverableSubscribers,
   hasDeliveryFor,
@@ -10,7 +10,7 @@ import {
   markBlocked,
   type DeliverableSubscriber,
 } from '@ayah/database';
-import { sendMessage } from './send';
+import { sendMessages } from './send';
 import { logger } from './logger';
 
 export interface DeliveryStats {
@@ -65,8 +65,8 @@ export async function deliverDueSubscribers(
         continue;
       }
 
-      const content = await buildDailyContent(entry);
-      const result = await sendMessage(bot, sub.telegramId, formatDailyMessage(content));
+      const content = await buildDailyContent(entry, sub.reviewCount);
+      const result = await sendMessages(bot, sub.telegramId, formatDailyMessages(content));
 
       if (result === 'blocked') {
         await markBlocked(sub.id);
@@ -99,19 +99,20 @@ export async function deliverDueSubscribers(
 }
 
 /**
- * Build the message for a subscriber's CURRENT ayah without sending or
- * advancing. Used by /today so a user can peek at where they are. Returns
- * null if there is nothing to show (finished a non-looping track).
+ * Build the message(s) for a subscriber's CURRENT ayah without sending or
+ * advancing. Used by /today so a user can peek at where they are. Returns an
+ * empty array if there is nothing to show (finished a non-looping track).
  */
 export async function previewCurrent(sub: {
   trackId: number;
   currentEntryId: number | null;
   startedAt: Date | null;
-}): Promise<string | null> {
+  reviewCount: number;
+}): Promise<string[]> {
   const entry = await resolveTargetEntry(sub);
-  if (!entry) return null;
-  const content = await buildDailyContent(entry);
-  return formatDailyMessage(content);
+  if (!entry) return [];
+  const content = await buildDailyContent(entry, sub.reviewCount);
+  return formatDailyMessages(content);
 }
 
 /** Pull the scheduling fields the core math needs out of a subscriber row. */

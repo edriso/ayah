@@ -33,3 +33,21 @@ export async function sendMessage(
     return 'failed';
   }
 }
+
+/**
+ * Send several messages to a chat in order (today's ayah, then the review
+ * chunks). Stops at the first failure and returns its result, so the caller
+ * does not record the delivery (it will be retried). Returns 'ok' only if
+ * every message was delivered.
+ */
+export async function sendMessages(
+  bot: Bot<Context>,
+  chatId: bigint,
+  texts: string[],
+): Promise<SendResult> {
+  for (const text of texts) {
+    const result = await sendMessage(bot, chatId, text);
+    if (result !== 'ok') return result;
+  }
+  return 'ok';
+}

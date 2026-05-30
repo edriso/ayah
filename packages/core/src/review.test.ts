@@ -1,32 +1,61 @@
 import { describe, it, expect } from 'vitest';
-import { reviewRange, advancePosition, REVIEW_WINDOW } from './review';
+import {
+  reviewRange,
+  advancePosition,
+  clampReviewCount,
+  DEFAULT_REVIEW_COUNT,
+  MAX_REVIEW_COUNT,
+} from './review';
 
-describe('reviewRange', () => {
-  it('returns a full window in the middle of a surah', () => {
-    expect(reviewRange(25)).toEqual({ from: 16, to: 25 });
+describe('reviewRange (previous ayat, excludes today)', () => {
+  it('returns the count ayat before today in the middle of a surah', () => {
+    expect(reviewRange(25, 10)).toEqual({ from: 15, to: 24 });
   });
 
-  it('clamps the start so a short surah does not go below ayah 1', () => {
-    expect(reviewRange(5)).toEqual({ from: 1, to: 5 });
+  it('clamps the start so it never crosses into the previous surah', () => {
+    expect(reviewRange(6, 10)).toEqual({ from: 1, to: 5 });
   });
 
-  it('returns just the one ayah for ayah 1 (no bleed into the previous surah)', () => {
-    expect(reviewRange(1)).toEqual({ from: 1, to: 1 });
+  it('returns null for ayah 1 (nothing earlier in the surah)', () => {
+    expect(reviewRange(1, 10)).toBeNull();
   });
 
-  it('uses a window of exactly 10 by default', () => {
-    expect(REVIEW_WINDOW).toBe(10);
-    const { from, to } = reviewRange(100);
-    expect(to - from + 1).toBe(10);
+  it('returns null when the count is 0 (review turned off)', () => {
+    expect(reviewRange(25, 0)).toBeNull();
   });
 
-  it('honours a custom window size', () => {
-    expect(reviewRange(100, 3)).toEqual({ from: 98, to: 100 });
+  it('defaults to 10 previous ayat', () => {
+    expect(DEFAULT_REVIEW_COUNT).toBe(10);
+    const r = reviewRange(100)!;
+    expect(r.to - r.from + 1).toBe(10);
   });
 
-  it('rejects bad input', () => {
-    expect(() => reviewRange(0)).toThrow();
-    expect(() => reviewRange(5, 0)).toThrow();
+  it('honours a custom count', () => {
+    expect(reviewRange(100, 3)).toEqual({ from: 97, to: 99 });
+  });
+
+  it('clamps an over-large count down to the max', () => {
+    // count 999 -> clamped to 20 -> the 20 ayat before today
+    expect(reviewRange(100, 999)).toEqual({ from: 80, to: 99 });
+  });
+
+  it('rejects a bad ayah number', () => {
+    expect(() => reviewRange(0, 10)).toThrow();
+  });
+});
+
+describe('clampReviewCount', () => {
+  it('keeps in-range values', () => {
+    expect(clampReviewCount(0)).toBe(0);
+    expect(clampReviewCount(10)).toBe(10);
+    expect(clampReviewCount(20)).toBe(20);
+  });
+
+  it('clamps out-of-range and bad values', () => {
+    expect(clampReviewCount(-5)).toBe(0);
+    expect(clampReviewCount(999)).toBe(MAX_REVIEW_COUNT);
+    expect(clampReviewCount(7.9)).toBe(7);
+    expect(clampReviewCount(NaN)).toBe(DEFAULT_REVIEW_COUNT);
   });
 });
 

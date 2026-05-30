@@ -15,8 +15,10 @@ developer can work on it.
   surah the ayat go in normal order (1, 2, 3 ...). This is the order many
   teachers use with children because the short surahs come first.
 - A subscriber has a position in the track. Each day they receive the ayah
-  at their position, plus a review block of the last ten ayat in that surah.
-  Then their position moves forward by one.
+  at their position, plus a review of the previous ayat in that surah (10 by
+  default, set with `/review`, 0 to 20). Then their position moves forward by
+  one. On long surahs the review is split across several messages so it never
+  exceeds Telegram's size limit.
 - The Quran text is verified Tanzil Uthmani text. It lives in read-only
   database tables and is never changed by the bot. See `docs/DATABASE.md`.
 
@@ -76,6 +78,7 @@ refuses to write anything that does not match.
 - `/today` show the current ayah now (does not move your position)
 - `/time HH:MM` set the daily send time
 - `/days` pick which weekdays you receive ayat
+- `/review N` how many previous ayat to review (0 to 20, default 10)
 - `/timezone Area/City` set your timezone
 - `/break` take a break (stops sending, keeps your position)
 - `/resume` come back from a break

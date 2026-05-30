@@ -1,10 +1,11 @@
 import { Bot, type Context } from 'grammy';
-import { toggleDay, activeDaysList } from '@ayah/core';
+import { toggleDay, activeDaysList, clampReviewCount, MAX_REVIEW_COUNT } from '@ayah/core';
 import {
   ensureSubscriber,
   setActiveDays,
   setDeliveryTime,
   setTimezone,
+  setReviewCount,
   pauseSubscriber,
   resumeSubscriber,
 } from '@ayah/database';
@@ -48,12 +49,29 @@ bot.command('settings', async (ctx) => {
 });
 
 // /today: show the current ayah without sending the daily push or moving
-// the subscriber forward. A pure peek.
+// the subscriber forward. A pure peek. May be more than one message when the
+// review is long.
 bot.command('today', async (ctx) => {
   const sub = await subscriberFor(ctx);
   if (!sub) return;
-  const text = await previewCurrent(sub);
-  await ctx.reply(text ?? COPY.brokenOrNotStarted);
+  const messages = await previewCurrent(sub);
+  if (messages.length === 0) return void ctx.reply(COPY.brokenOrNotStarted);
+  for (const message of messages) await ctx.reply(message);
+});
+
+// /review N: set how many previous ayat to include for review (0..20).
+bot.command('review', async (ctx) => {
+  const sub = await subscriberFor(ctx);
+  if (!sub) return;
+  const arg = commandArg(ctx, 'review');
+  if (!arg) return void ctx.reply(COPY.reviewUsage(sub.reviewCount));
+  const parsed = Number(arg);
+  if (!Number.isInteger(parsed) || parsed < 0 || parsed > MAX_REVIEW_COUNT) {
+    return void ctx.reply(COPY.reviewInvalid);
+  }
+  const count = clampReviewCount(parsed);
+  await setReviewCount(sub.id, count);
+  await ctx.reply(COPY.reviewUpdated(count));
 });
 
 // /time HH:MM
@@ -166,6 +184,7 @@ async function setBotCommands() {
     { command: 'today', description: 'عرض آية اليوم' },
     { command: 'time', description: 'ضبط وقت الإرسال' },
     { command: 'days', description: 'اختيار أيام الإرسال' },
+    { command: 'review', description: 'عدد آيات المراجعة' },
     { command: 'timezone', description: 'ضبط المنطقة الزمنية' },
     { command: 'break', description: 'أخذ راحة' },
     { command: 'resume', description: 'العودة من الراحة' },

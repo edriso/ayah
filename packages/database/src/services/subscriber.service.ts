@@ -77,6 +77,17 @@ export function setTimezone(subscriberId: number, timezone: string) {
 }
 
 /**
+ * Update how many previous ayat the subscriber gets for review (0..20). The
+ * caller is expected to have clamped the value with clampReviewCount.
+ */
+export function setReviewCount(subscriberId: number, reviewCount: number) {
+  return prisma.subscriber.update({
+    where: { id: subscriberId },
+    data: { reviewCount },
+  });
+}
+
+/**
  * Mark a subscriber as unreachable (they blocked the bot, or a send failed
  * with a 403). Send loops skip blocked subscribers. Cleared automatically
  * the next time they message the bot (see ensureSubscriber).

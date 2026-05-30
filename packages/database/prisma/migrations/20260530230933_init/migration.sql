@@ -52,6 +52,7 @@ CREATE TABLE `subscribers` (
     `delivery_hour` TINYINT NOT NULL DEFAULT 7,
     `delivery_minute` TINYINT NOT NULL DEFAULT 0,
     `active_days` INTEGER NOT NULL DEFAULT 127,
+    `review_count` INTEGER NOT NULL DEFAULT 10,
     `track_id` INTEGER NOT NULL,
     `current_entry_id` INTEGER NULL,
     `paused_at` DATETIME(3) NULL,

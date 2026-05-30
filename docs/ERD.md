@@ -49,6 +49,7 @@ Subscriber (who we deliver to)
   deliveryHour    0..23, local time
   deliveryMinute  0..59, local time
   activeDays      7-bit mask, bit 0 = Monday .. bit 6 = Sunday
+  reviewCount     previous ayat to review (0..20, default 10)
   trackId         FK -> Track.id
   currentEntryId  FK -> TrackEntry.id, null = not started
   pausedAt        null = active, set = on a break
@@ -111,10 +112,18 @@ apart:
 The kids track loops, so the last case does not happen for it, but the code
 handles it for any future non-looping track.
 
-## The "last 10 ayat" query
+## The review query
 
 From the current entry we know the ayah's surah and its number `n`. The
-review block is ayat where `surahNumber = surah` and `numberInSurah` is
-between `max(1, n - 9)` and `n`. The clamp to 1 stops it crossing into the
-previous surah, which is the edge case when `n` is ayah 1. See
+review shows the subscriber's `reviewCount` PREVIOUS ayat (not today's): ayat
+where `surahNumber = surah` and `numberInSurah` is between
+`max(1, n - reviewCount)` and `n - 1`. The clamp to 1 stops it crossing into
+the previous surah; when `n` is ayah 1 there is nothing to review. Today's
+ayah is shown on its own, so the longest verses are never duplicated. See
 `packages/core/src/review.ts`.
+
+Each delivery can be more than one message: today's ayah, then the review.
+On long surahs the review is split across several messages so none exceeds
+Telegram's 4096-character limit (see `formatDailyMessages` in
+`packages/core/src/format.ts`). The default review of 10 always fits in one
+message; only larger settings split, and then only in the longest surahs.

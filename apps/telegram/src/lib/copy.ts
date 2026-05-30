@@ -34,10 +34,17 @@ export function daysSummaryAr(mask: number): string {
   return days.map(dayNameAr).join('، ');
 }
 
+/** Describe the review count for the settings view. */
+export function reviewSummaryAr(reviewCount: number): string {
+  if (reviewCount === 0) return 'بدون مراجعة (آية اليوم فقط)';
+  return `${toArabicDigits(reviewCount)} آيات سابقة`;
+}
+
 export interface SettingsView {
   deliveryHour: number;
   deliveryMinute: number;
   activeDays: number;
+  reviewCount: number;
   timezone: string;
   pausedAt: Date | null;
 }
@@ -49,6 +56,7 @@ export function settingsSummary(s: SettingsView): string {
     `• الحالة: ${status}`,
     `• وقت الإرسال: ${formatTimeAr(s.deliveryHour, s.deliveryMinute)}`,
     `• الأيام: ${daysSummaryAr(s.activeDays)}`,
+    `• المراجعة: ${reviewSummaryAr(s.reviewCount)}`,
     `• المنطقة الزمنية: ${s.timezone}`,
   ].join('\n');
 }
@@ -58,7 +66,7 @@ export const COPY = {
     [
       'السلام عليكم ورحمة الله 🌿',
       '',
-      'مرحبًا بك في بوت "آية". سيصلك كل يوم آية جديدة للحفظ، ومعها آخر ١٠ آيات من نفس السورة للمراجعة، بإذن الله.',
+      'مرحبًا بك في بوت "آية". سيصلك كل يوم آية جديدة للحفظ، ومعها آيات سابقة من نفس السورة للمراجعة، بإذن الله.',
       '',
       'نبدأ من سورة الناس ونمضي إلى الفاتحة (الترتيب المناسب للأطفال والمبتدئين).',
       '',
@@ -68,6 +76,7 @@ export const COPY = {
       '/today — عرض آية اليوم الآن',
       '/time — ضبط وقت الإرسال',
       '/days — اختيار أيام الإرسال',
+      '/review — عدد آيات المراجعة',
       '/timezone — ضبط المنطقة الزمنية',
       '/break — أخذ راحة (إيقاف الإرسال)',
       '/resume — العودة من الراحة',
@@ -76,12 +85,13 @@ export const COPY = {
     ].join('\n'),
 
   help: [
-    'بوت "آية" يساعدك على حفظ القرآن بإرسال آية واحدة كل يوم مع مراجعة آخر ١٠ آيات.',
+    'بوت "آية" يساعدك على حفظ القرآن بإرسال آية واحدة كل يوم مع آيات سابقة للمراجعة.',
     '',
     'الأوامر:',
     '/today — عرض آية اليوم الآن (بدون تغيير موضعك)',
     '/time HH:MM — ضبط وقت الإرسال، مثال: /time 07:00',
     '/days — اختيار أيام الإرسال',
+    '/review N — عدد آيات المراجعة (من ٠ إلى ٢٠)، مثال: /review 5',
     '/timezone — ضبط المنطقة الزمنية، مثال: /timezone Africa/Cairo',
     '/break — أخذ راحة، يتوقف الإرسال ويبقى موضعك محفوظًا',
     '/resume — العودة من الراحة من حيث توقفت',
@@ -107,4 +117,15 @@ export const COPY = {
   daysPrompt: 'اختر الأيام التي تريد أن تصلك فيها الآيات، ثم اضغط "تم":',
   daysUpdated: (summary: string) => `تم تحديث أيام الإرسال: ${summary} ✅`,
   daysNone: 'لم تختر أي يوم، لن تصلك آيات. اختر يومًا واحدًا على الأقل، أو خذ راحة عبر /break.',
+
+  reviewUsage: (current: number) =>
+    `عدد آيات المراجعة الحالي: ${reviewSummaryAr(current)}.\n` +
+    'لتغييره اكتب: /review N\n' +
+    'حيث N رقم من ٠ إلى ٢٠. مثال: /review 5\n' +
+    'اكتب /review 0 لإيقاف المراجعة والاكتفاء بآية اليوم.',
+  reviewInvalid: 'الرجاء كتابة رقم صحيح من ٠ إلى ٢٠. مثال: /review 5',
+  reviewUpdated: (count: number) =>
+    count === 0
+      ? 'تم إيقاف المراجعة. ستصلك آية اليوم فقط ✅'
+      : `تم ضبط المراجعة على ${reviewSummaryAr(count)} ✅`,
 };

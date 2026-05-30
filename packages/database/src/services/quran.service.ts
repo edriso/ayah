@@ -80,13 +80,21 @@ export type EntryWithAyah = NonNullable<Awaited<ReturnType<typeof getEntryById>>
  * Build the full daily content (today's ayah + the review window) for a
  * given entry. Pure data in, ready-to-format data out.
  */
-export async function buildDailyContent(entry: EntryWithAyah): Promise<DailyMessageInput> {
+export async function buildDailyContent(
+  entry: EntryWithAyah,
+  reviewCount: number,
+): Promise<DailyMessageInput> {
   const { ayah } = entry;
-  const { from, to } = reviewRange(ayah.numberInSurah);
-  const review = await getReviewAyat(ayah.surahNumber, from, to);
-  // Show the basmala only when this message covers the start of the surah
-  // (the review window reaches ayah 1) and the surah uses a basmala.
-  const showBasmala = from === 1 && surahUsesBasmala(ayah.surahNumber);
+  const range = reviewRange(ayah.numberInSurah, reviewCount);
+  const review = range ? await getReviewAyat(ayah.surahNumber, range.from, range.to) : [];
+
+  // Show the basmala as the surah banner only when this delivery covers the
+  // start of the surah (the lowest ayah shown is ayah 1) and the surah uses
+  // a basmala. The lowest ayah shown is the start of the review, or today's
+  // ayah when there is no review.
+  const lowestShown = review.length > 0 ? review[0].numberInSurah : ayah.numberInSurah;
+  const showBasmala = lowestShown === 1 && surahUsesBasmala(ayah.surahNumber);
+
   return {
     surah: { number: ayah.surah.number, nameAr: ayah.surah.nameAr },
     today: { numberInSurah: ayah.numberInSurah, text: ayah.text },

@@ -20,11 +20,11 @@ export interface DeliverySchedule {
   activeDays: number;
 }
 
-/** Where a subscriber currently stands, plus the inclusive ayah range. */
+/** The inclusive range of previous ayat to review (excludes today's ayah). */
 export interface ReviewRange {
-  /** First ayah number in the surah to show (>= 1). */
+  /** First ayah number in the surah to review (>= 1). */
   from: number;
-  /** Last ayah number, which is the subscriber's current ayah. */
+  /** Last ayah number to review, which is the ayah just before today's. */
   to: number;
 }
 
