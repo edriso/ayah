@@ -18,7 +18,7 @@ three. See the `NOTICE` file.
 
 ```
 pnpm data:fetch   download + verify + write the frozen JSON file
-pnpm db:push      create the tables
+pnpm db:deploy    create the tables by applying the migrations
 pnpm db:seed      fill Surah, Ayah, Track, TrackEntry from the JSON
 ```
 
@@ -46,10 +46,11 @@ If Tanzil changes its download URL, set `QURAN_SOURCE_URL` to a current
 Tanzil Uthmani "Text (with aya numbers)" link and run `pnpm data:fetch`
 again.
 
-### Step 2 and 3: db:push and db:seed
+### Step 2 and 3: db:deploy and db:seed
 
-`db:push` creates the tables from the Prisma schema. `db:seed` reads the
-frozen JSON, checks it again against the same count table, and then fills:
+`db:deploy` applies the migrations under `prisma/migrations/` to create the
+tables. `db:seed` reads the frozen JSON, checks it again against the same
+count table, and then fills:
 
 - `Surah` from the reference table in `src/reference/surahs.ts`, with
   `ayahCount` taken from the actual text.

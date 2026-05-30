@@ -20,3 +20,33 @@
 export function surahUsesBasmala(surahNumber: number): boolean {
   return surahNumber !== 1 && surahNumber !== 9;
 }
+
+/**
+ * Remove Arabic diacritics and Quranic marks so two spellings can be compared
+ * by their letters alone. Arabic letters (including alef wasla U+0671) are
+ * kept; only combining marks are removed.
+ */
+export function stripArabicMarks(text: string): string {
+  // Arabic signs (0610-061A), harakat/tanwin/shadda/sukun (064B-065F),
+  // superscript alef (0670), and Quranic annotation signs (06D6-06ED).
+  return text.replace(/[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06ED]/g, '');
+}
+
+/**
+ * Remove a leading basmala from an ayah's text, returning the pure ayah.
+ *
+ * Some Quran editions merge the basmala into the text of ayah 1. To get the
+ * real numbered ayah we strip that prefix. The match ignores diacritics,
+ * because a few surahs carry the basmala with a slightly different mark (an
+ * extra shadda) that an exact byte match would miss. If the text does not
+ * start with the basmala, it is returned unchanged.
+ */
+export function removeBasmalaPrefix(ayahText: string, basmala: string): string {
+  const basmalaWordCount = basmala.split(/\s+/).length;
+  const words = ayahText.split(/\s+/);
+  const head = words.slice(0, basmalaWordCount).join(' ');
+  if (stripArabicMarks(head) !== stripArabicMarks(basmala)) {
+    return ayahText; // already clean, nothing to strip
+  }
+  return words.slice(basmalaWordCount).join(' ').trim();
+}

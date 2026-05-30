@@ -15,11 +15,15 @@ small `/health` endpoint for uptime checks.
 
 ```bash
 pnpm install --prod=false
-pnpm data:fetch          # writes the frozen Quran data file
-pnpm db:deploy           # or db:push for the very first setup
+pnpm data:fetch          # writes the frozen Quran data file (skip if cloned)
+pnpm db:deploy           # applies the migrations (creates the tables)
 pnpm db:seed             # fills the Quran tables and the kids track
 pnpm start               # runs apps/telegram
 ```
+
+`db:deploy` and `db:seed` are setup steps. Run them once per environment when
+you first deploy and again only after a new migration. The bot refuses to
+start until the text is seeded, so you cannot forget.
 
 Set these env vars on the host (see the .env.example files):
 
@@ -28,6 +32,23 @@ Set these env vars on the host (see the .env.example files):
 - `TZ_NAME`       default timezone for new subscribers, e.g. Africa/Cairo
 - `ADMIN_TELEGRAM_ID`  optional, unlocks /admin_* for you
 - `NODE_ENV=production`
+
+## With Docker
+
+A `Dockerfile` is included. It runs the bot from source with tsx and includes
+the committed Quran text, so the image needs no network to seed.
+
+```bash
+docker build -t ayah-bot .
+# Run migrations and seed once (only needed on first deploy / new migration):
+docker run --rm --env-file apps/telegram/.env ayah-bot pnpm db:deploy
+docker run --rm --env-file apps/telegram/.env ayah-bot pnpm db:seed
+# Then run the bot:
+docker run -d --env-file apps/telegram/.env -p 8080:8080 ayah-bot
+```
+
+If you run more than one instance, run the migrate and seed steps as a single
+one-off job, not inside each container.
 
 ## Notes for shared hosting MySQL
 

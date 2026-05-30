@@ -8,33 +8,48 @@ export function getByTelegramId(telegramId: bigint) {
   return prisma.subscriber.findUnique({ where: { telegramId } });
 }
 
+// The default track id never changes after seeding, so we look it up once and
+// cache it. This keeps ensureSubscriber to a single write per call.
+let defaultTrackId: number | null = null;
+async function getDefaultTrackId(): Promise<number> {
+  if (defaultTrackId === null) {
+    const track = await getTrackByKey(KIDS_TRACK.key);
+    defaultTrackId = track.id;
+  }
+  return defaultTrackId;
+}
+
 /**
  * Make sure a subscriber row exists for this Telegram user, creating it on
  * the default kids track if it is their first time. Also clears blockedAt,
  * because the user messaging the bot is proof we can reach them again.
- * Returns the subscriber row.
+ *
+ * Uses an upsert so two messages arriving at once from a brand-new user can
+ * never race into a duplicate-key error. Returns the subscriber row.
  */
 export async function ensureSubscriber(telegramId: bigint, timezone?: string) {
-  const existing = await getByTelegramId(telegramId);
-  if (existing) {
-    if (existing.blockedAt) {
-      return prisma.subscriber.update({
-        where: { id: existing.id },
-        data: { blockedAt: null },
-      });
+  const trackId = await getDefaultTrackId();
+  try {
+    return await prisma.subscriber.upsert({
+      where: { telegramId },
+      // Any interaction proves the user is reachable again.
+      update: { blockedAt: null },
+      create: {
+        telegramId,
+        trackId,
+        activeDays: ALL_DAYS,
+        ...(timezone ? { timezone } : {}),
+      },
+    });
+  } catch (err) {
+    // On MySQL, Prisma's upsert is select-then-insert, so two requests for a
+    // brand-new user that land at the very same moment can both try to
+    // insert and one loses with P2002. The row now exists, so just update it.
+    if ((err as { code?: string }).code === 'P2002') {
+      return prisma.subscriber.update({ where: { telegramId }, data: { blockedAt: null } });
     }
-    return existing;
+    throw err;
   }
-
-  const track = await getTrackByKey(KIDS_TRACK.key);
-  return prisma.subscriber.create({
-    data: {
-      telegramId,
-      trackId: track.id,
-      activeDays: ALL_DAYS,
-      ...(timezone ? { timezone } : {}),
-    },
-  });
 }
 
 /** Update which weekdays a subscriber receives ayat on (a 7-bit mask). */

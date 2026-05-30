@@ -18,7 +18,7 @@ import { createHash } from 'node:crypto';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { surahUsesBasmala } from '@ayah/core';
+import { surahUsesBasmala, removeBasmalaPrefix } from '@ayah/core';
 import { AYAH_COUNTS, TOTAL_AYAT } from '../src/reference/ayah-counts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -167,35 +167,22 @@ function normalizeBasmala(ayat: ParsedAyah[]): string {
   const fatihaOpening = ayat.find((a) => a.surah === 1 && a.ayah === 1);
   if (!fatihaOpening) throw new Error('Surah 1 ayah 1 not found; cannot read the basmala.');
   const basmala = fatihaOpening.text; // verbatim, for display
-  // The basmala is four words. We compare WITHOUT diacritics, because a few
-  // surahs (e.g. At-Tin, Al-Qadr) carry the basmala with a slightly
-  // different mark (an extra shadda) that an exact match would miss.
-  const basmalaWordCount = basmala.split(/\s+/).length;
-  const bareBasmala = stripDiacritics(basmala);
 
   for (const a of ayat) {
     if (a.ayah !== 1 || a.surah === 1) continue;
     if (!surahUsesBasmala(a.surah)) continue; // At-Tawbah has no basmala
-    const words = a.text.split(/\s+/);
-    const head = words.slice(0, basmalaWordCount).join(' ');
-    if (stripDiacritics(head) === bareBasmala) {
-      a.text = words.slice(basmalaWordCount).join(' ').trim();
-      if (a.text === '') {
-        throw new Error(`Surah ${a.surah} ayah 1 became empty after removing the basmala.`);
-      }
-    } else {
+    const cleaned = removeBasmalaPrefix(a.text, basmala);
+    if (cleaned === a.text) {
       // A non-merged edition: ayah 1 is already clean. Nothing to strip.
       console.warn(`Note: surah ${a.surah} ayah 1 had no merged basmala (already clean).`);
+      continue;
     }
+    if (cleaned === '') {
+      throw new Error(`Surah ${a.surah} ayah 1 became empty after removing the basmala.`);
+    }
+    a.text = cleaned;
   }
   return basmala;
-}
-
-/** Remove Arabic diacritics/marks so two spellings can be compared by letters. */
-function stripDiacritics(text: string): string {
-  // Harakat, tanwin, shadda, sukun, superscript alef, and Quranic annotation
-  // signs. Letters (including alef wasla U+0671) are kept.
-  return text.replace(/[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06ED]/g, '');
 }
 
 /** Reshape the flat list into [{ number, ayat: [text, ...] }] by surah. */

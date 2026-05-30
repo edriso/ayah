@@ -53,10 +53,12 @@ cp apps/telegram/.env.example      apps/telegram/.env
 #    - set BOT_TOKEN in apps/telegram/.env (from @BotFather)
 
 # 3. Download and verify the Quran text (writes a frozen data file)
+#    The text is also committed to the repo, so if you just cloned this you
+#    can skip this step.
 pnpm data:fetch
 
-# 4. Create the tables
-pnpm db:push
+# 4. Create the tables (applies the migrations)
+pnpm db:deploy
 
 # 5. Seed surahs, ayat, and the kids track
 pnpm db:seed

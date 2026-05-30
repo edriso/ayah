@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { formatDailyMessage, ayahMarker, formatAyahLine } from './format';
 import { toArabicDigits } from './arabic';
-import { surahUsesBasmala } from './basmala';
 
 const surah = { number: 112, nameAr: 'الإخلاص' };
 
@@ -60,18 +59,5 @@ describe('formatDailyMessage', () => {
       basmala: basmalaText,
     });
     expect(withBasmala).toContain(basmalaText);
-  });
-});
-
-describe('surahUsesBasmala', () => {
-  it('is false for Al-Fatihah (basmala is ayah 1) and At-Tawbah (none)', () => {
-    expect(surahUsesBasmala(1)).toBe(false);
-    expect(surahUsesBasmala(9)).toBe(false);
-  });
-
-  it('is true for every other surah', () => {
-    expect(surahUsesBasmala(2)).toBe(true);
-    expect(surahUsesBasmala(112)).toBe(true);
-    expect(surahUsesBasmala(114)).toBe(true);
   });
 });

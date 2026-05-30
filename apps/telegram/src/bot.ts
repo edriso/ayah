@@ -11,7 +11,8 @@ import {
 import { config } from './config';
 import { logger } from './lib/logger';
 import { COPY, settingsSummary, formatTimeAr, daysSummaryAr } from './lib/copy';
-import { previewCurrent, deliverDueSubscribers } from './lib/deliver';
+import { previewCurrent } from './lib/deliver';
+import { runDeliveryOnce } from './scheduler';
 import { buildDaysKeyboard, DAY_TOGGLE_PREFIX, DAYS_DONE } from './lib/days-keyboard';
 import { parseTime, isValidTimezone } from './lib/parse';
 
@@ -146,7 +147,11 @@ bot.command('admin_health', async (ctx) => {
 // uses. Handy for a smoke test right after deploy.
 bot.command('admin_send', async (ctx) => {
   if (!isAdmin(ctx)) return;
-  const stats = await deliverDueSubscribers(bot);
+  const stats = await runDeliveryOnce(bot);
+  if (!stats) {
+    await ctx.reply('A delivery run is already in progress. Try again in a moment.');
+    return;
+  }
   await ctx.reply(
     `Delivery run done.\nDue: ${stats.due}\nSent: ${stats.sent}\nSkipped: ${stats.skipped}\nFailed: ${stats.failed}`,
   );

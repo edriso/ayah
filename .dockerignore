@@ -1,0 +1,27 @@
+# Keep the build context small and never ship secrets into image layers.
+node_modules
+**/node_modules
+**/dist
+**/generated
+.git
+.gitignore
+
+# Secrets — pass env at runtime, never bake .env files into the image.
+# Covers root and every package/app folder. The .env.example files are kept.
+**/.env
+**/.env.*
+!**/.env.example
+
+# Tests, docs, and tooling the running bot does not need.
+**/*.test.ts
+coverage
+*.log
+*.tsbuildinfo
+.husky
+.claude
+.vscode
+.idea
+.DS_Store
+README.md
+CLAUDE.md
+docs

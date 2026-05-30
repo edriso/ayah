@@ -55,14 +55,26 @@ One subscriber failing is caught and never stops the rest of the batch.
 
 ```bash
 pnpm install
-pnpm data:fetch     # download + verify the Quran text (once)
-pnpm db:push        # create tables
+pnpm data:fetch     # download + verify the Quran text (once; also committed)
+pnpm db:deploy      # apply migrations (create tables)
 pnpm db:seed        # fill Quran tables and the kids track
 pnpm dev            # run the bot with reload
 pnpm test           # all tests
 pnpm check          # typecheck + lint + test (run before pushing)
 pnpm db:studio      # browse the database
 ```
+
+### Changing the schema
+
+Edit `packages/database/prisma/schema.prisma`, then make a migration:
+
+```bash
+pnpm db:migrate     # prisma migrate dev: creates a new migration and applies it
+```
+
+Commit the new folder under `prisma/migrations/`. Production applies it with
+`pnpm db:deploy`. Use `pnpm db:push` only for quick throwaway experiments;
+real changes go through a migration so production stays in step.
 
 ## Gotchas
 

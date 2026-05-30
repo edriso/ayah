@@ -1,10 +1,39 @@
 import cron, { type ScheduledTask } from 'node-cron';
 import type { Bot, Context } from 'grammy';
 import { pruneCronRuns } from '@ayah/database';
-import { deliverDueSubscribers } from './lib/deliver';
+import { deliverDueSubscribers, type DeliveryStats } from './lib/deliver';
 import { logger } from './lib/logger';
 
 const tasks: ScheduledTask[] = [];
+
+// In-process lock so two delivery runs never overlap. A batch that takes
+// longer than a minute would otherwise let the next cron tick (or the startup
+// catch-up) start a second batch, and both could send to the same subscriber
+// before either records the delivery. The per-day unique index stops a double
+// RECORD, but only this guard stops a double SEND. (Assumes a single bot
+// process; horizontal scaling would need a database lock instead.)
+let deliveryRunning = false;
+
+/**
+ * Run one delivery batch, unless another one is already in progress. Used by
+ * both the cron tick and the startup catch-up. Returns null when skipped
+ * because a run was already active.
+ */
+export async function runDeliveryOnce(
+  bot: Bot<Context>,
+  now: Date = new Date(),
+): Promise<DeliveryStats | null> {
+  if (deliveryRunning) {
+    logger.debug('Delivery already running, skipping this trigger');
+    return null;
+  }
+  deliveryRunning = true;
+  try {
+    return await deliverDueSubscribers(bot, now);
+  } finally {
+    deliveryRunning = false;
+  }
+}
 
 /**
  * Start the recurring jobs:
@@ -17,9 +46,9 @@ const tasks: ScheduledTask[] = [];
  */
 export function startScheduler(bot: Bot<Context>): void {
   const tick = cron.schedule('* * * * *', () => {
-    deliverDueSubscribers(bot)
+    runDeliveryOnce(bot)
       .then((stats) => {
-        if (stats.due > 0) logger.info('Delivery tick', { ...stats });
+        if (stats && stats.due > 0) logger.info('Delivery tick', { ...stats });
       })
       .catch((err) => logger.error('Delivery tick failed', { error: String(err) }));
   });

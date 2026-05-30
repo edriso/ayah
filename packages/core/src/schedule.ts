@@ -24,30 +24,33 @@ export function getLocalContext(timezone: string, now: Date): LocalContext {
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
-    weekday: 'short',
   }).formatToParts(now);
 
   const get = (type: string) => parts.find((p) => p.type === type)?.value ?? '';
 
-  const date = `${get('year')}-${get('month')}-${get('day')}`;
+  const year = parseInt(get('year'), 10);
+  const month = parseInt(get('month'), 10);
+  const day = parseInt(get('day'), 10);
   let hour = parseInt(get('hour'), 10);
   // Intl can return "24" for midnight in some engines; fold it back to 0.
   if (hour === 24) hour = 0;
   const minute = parseInt(get('minute'), 10);
 
   return {
-    date,
-    isoWeekday: isoWeekdayFromShort(get('weekday')),
+    date: `${get('year')}-${get('month')}-${get('day')}`,
+    isoWeekday: isoWeekdayOf(year, month, day),
     minutesSinceMidnight: hour * 60 + minute,
   };
 }
 
-/** Map a short weekday name ("Mon".."Sun") to an ISO weekday (1-7). */
-function isoWeekdayFromShort(short: string): number {
-  const order = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  const index = order.indexOf(short);
-  if (index === -1) throw new Error(`Unexpected weekday "${short}"`);
-  return index + 1;
+/**
+ * ISO weekday (Monday 1 ... Sunday 7) for a local calendar date. We build a
+ * UTC date from the local Y-M-D and read its day of week. This avoids parsing
+ * localized weekday names, which can vary between Node/ICU versions.
+ */
+function isoWeekdayOf(year: number, month: number, day: number): number {
+  const dow = new Date(Date.UTC(year, month - 1, day)).getUTCDay(); // 0=Sun..6=Sat
+  return dow === 0 ? 7 : dow;
 }
 
 /** The send time as minutes past local midnight. */
