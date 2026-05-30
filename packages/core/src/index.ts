@@ -6,4 +6,5 @@ export * from './days';
 export * from './schedule';
 export * from './review';
 export * from './arabic';
+export * from './basmala';
 export * from './format';

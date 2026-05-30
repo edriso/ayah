@@ -77,3 +77,23 @@ fail loudly at boot than to send a broken ayah to a user.
 The bot never writes to Surah or Ayah after seeding. Keeping the holy text
 out of the day-to-day write path means a bad migration or a code bug can
 never corrupt it.
+
+## The basmala
+
+The Tanzil Uthmani edition we download merges the basmala
+(بسم الله الرحمن الرحيم) into the text of ayah 1 for every surah except
+At-Tawbah (9). In the standard Hafs numbering the basmala is a numbered ayah
+only in Al-Fatihah; for other surahs it is written at the start but is not
+part of ayah 1.
+
+For correct ayah-by-ayah memorization, `fetch-quran.ts` separates the
+basmala from ayah 1 (for surahs 2 to 114, except 9) and stores the pure
+numbered ayah. The basmala bytes are taken verbatim from the source itself
+(surah 1 ayah 1), never hand-typed, and saved in the data file. The bot then
+shows the basmala as the surah opening when a message covers the start of a
+surah (see `surahUsesBasmala` and `getBasmala`). So the user always sees the
+full basmala in its correct place, and nothing is removed from the text.
+
+A couple of surahs (At-Tin, Al-Qadr) carry the basmala with a slightly
+different mark, so the match is done on letters (diacritics removed) to catch
+those too.

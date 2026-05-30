@@ -30,6 +30,14 @@ export interface DailyMessageInput {
    * the very same ayah twice.
    */
   review: DisplayAyah[];
+  /**
+   * The basmala text to show as the surah opening, or undefined/empty to
+   * show none. The caller passes the seeded basmala string only when this
+   * message covers the start of a surah that uses a basmala (see
+   * surahUsesBasmala). Passing the text in (instead of hard-coding it) keeps
+   * what we display identical to the verified source.
+   */
+  basmala?: string;
 }
 
 /**
@@ -37,12 +45,14 @@ export interface DailyMessageInput {
  * the "last ten ayat" review block for the same surah.
  */
 export function formatDailyMessage(input: DailyMessageInput): string {
-  const { surah, today, review } = input;
+  const { surah, today, review, basmala } = input;
 
   const blocks: string[] = [];
 
-  // Block 1: today's ayah, with the surah name above it.
-  blocks.push(`🌿 آية اليوم\n\nسورة ${surah.nameAr}\n\n${formatAyahLine(today)}`);
+  // Block 1: today's ayah, with the surah name above it, and the basmala as
+  // the surah opening when this message covers the start of the surah.
+  const opening = basmala ? `\n${basmala}` : '';
+  blocks.push(`🌿 آية اليوم\n\nسورة ${surah.nameAr}${opening}\n\n${formatAyahLine(today)}`);
 
   // Block 2: the review window. Skip it when it would only repeat today.
   const meaningfulReview = review.filter((a) => a.numberInSurah !== today.numberInSurah);

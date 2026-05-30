@@ -1,5 +1,5 @@
 import { prisma } from '../client';
-import { reviewRange, type DailyMessageInput } from '@ayah/core';
+import { reviewRange, surahUsesBasmala, type DailyMessageInput } from '@ayah/core';
 import { TOTAL_AYAT } from '../reference/ayah-counts';
 
 /**
@@ -51,6 +51,20 @@ export function getEntryById(entryId: number) {
   });
 }
 
+// The basmala is just surah 1 ayah 1 in the seeded text. We read it once and
+// cache it, so the bot shows the exact verified bytes as the surah opening.
+let basmalaCache: string | null = null;
+export async function getBasmala(): Promise<string> {
+  if (basmalaCache !== null) return basmalaCache;
+  const opening = await prisma.ayah.findUnique({
+    where: { surahNumber_numberInSurah: { surahNumber: 1, numberInSurah: 1 } },
+    select: { text: true },
+  });
+  if (!opening) throw new Error('Basmala (surah 1 ayah 1) not found. Is the Quran text seeded?');
+  basmalaCache = opening.text;
+  return basmalaCache;
+}
+
 /** The review window ayat (ascending) for the same surah, inclusive. */
 export function getReviewAyat(surahNumber: number, from: number, to: number) {
   return prisma.ayah.findMany({
@@ -70,9 +84,13 @@ export async function buildDailyContent(entry: EntryWithAyah): Promise<DailyMess
   const { ayah } = entry;
   const { from, to } = reviewRange(ayah.numberInSurah);
   const review = await getReviewAyat(ayah.surahNumber, from, to);
+  // Show the basmala only when this message covers the start of the surah
+  // (the review window reaches ayah 1) and the surah uses a basmala.
+  const showBasmala = from === 1 && surahUsesBasmala(ayah.surahNumber);
   return {
     surah: { number: ayah.surah.number, nameAr: ayah.surah.nameAr },
     today: { numberInSurah: ayah.numberInSurah, text: ayah.text },
     review,
+    basmala: showBasmala ? await getBasmala() : undefined,
   };
 }
