@@ -9,7 +9,7 @@
 // writing anything, and is safe to run twice: if the text is already seeded
 // it just stops.
 
-import 'dotenv/config';
+import { loadEnv } from '@ayah/core';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,6 +17,8 @@ import { prisma } from '../src/client';
 import { SURAHS } from '../src/reference/surahs';
 import { AYAH_COUNTS, TOTAL_AYAT } from '../src/reference/ayah-counts';
 import { KIDS_TRACK, buildKidsOrder } from '../src/reference/curriculum';
+
+loadEnv();
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DATA_FILE = join(HERE, 'data', 'quran-uthmani.json');

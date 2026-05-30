@@ -1,4 +1,7 @@
-import 'dotenv/config';
+import { loadEnv } from '@ayah/core';
+
+// Load the single root .env before we read any variable.
+loadEnv();
 
 function requireEnv(key: string): string {
   const value = process.env[key];

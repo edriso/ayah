@@ -1,6 +1,9 @@
-import 'dotenv/config';
+import { loadEnv } from '@ayah/core';
 import { PrismaMariaDb } from '@prisma/adapter-mariadb';
 import { PrismaClient } from './generated/prisma/client';
+
+// Load the single root .env before we read DATABASE_URL.
+loadEnv();
 
 // Parse the URL ourselves so we can hand the adapter a PoolConfig object.
 // The URL-string form uses lax pool defaults (idleTimeout 30 min) that

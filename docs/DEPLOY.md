@@ -25,7 +25,7 @@ pnpm start               # runs apps/telegram
 you first deploy and again only after a new migration. The bot refuses to
 start until the text is seeded, so you cannot forget.
 
-Set these env vars on the host (see the .env.example files):
+Set these env vars on the host (see the single root `.env.example`):
 
 - `DATABASE_URL`  the MySQL connection string
 - `BOT_TOKEN`     from @BotFather
@@ -41,10 +41,10 @@ the committed Quran text, so the image needs no network to seed.
 ```bash
 docker build -t ayah-bot .
 # Run migrations and seed once (only needed on first deploy / new migration):
-docker run --rm --env-file apps/telegram/.env ayah-bot pnpm db:deploy
-docker run --rm --env-file apps/telegram/.env ayah-bot pnpm db:seed
+docker run --rm --env-file .env ayah-bot pnpm db:deploy
+docker run --rm --env-file .env ayah-bot pnpm db:seed
 # Then run the bot:
-docker run -d --env-file apps/telegram/.env -p 8080:8080 ayah-bot
+docker run -d --env-file .env -p 8080:8080 ayah-bot
 ```
 
 If you run more than one instance, run the migrate and seed steps as a single

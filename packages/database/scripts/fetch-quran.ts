@@ -18,8 +18,11 @@ import { createHash } from 'node:crypto';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { surahUsesBasmala, removeBasmalaPrefix } from '@ayah/core';
+import { surahUsesBasmala, removeBasmalaPrefix, loadEnv } from '@ayah/core';
 import { AYAH_COUNTS, TOTAL_AYAT } from '../src/reference/ayah-counts';
+
+// Pick up QURAN_SOURCE_URL from the root .env if present.
+loadEnv();
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = join(HERE, '..', 'prisma', 'data');

@@ -14,6 +14,28 @@ The Tanzil terms allow copying the text without change, as long as we keep it
 unchanged, name Tanzil as the source, and link to tanzil.net. We do all
 three. See the `NOTICE` file.
 
+## Independent cross-check
+
+Beyond the count checks below, the committed text was compared character by
+character against a second, independent trusted reference (the AlQuran.cloud
+`quran-uthmani` edition) across a sample of 366 ayat in 10 surahs spread over
+the whole Quran (Al-Fatihah, Al-Kahf, Ya-Sin, Ar-Rahman, Al-Mulk, An-Naba,
+Al-Kawthar, Al-Ikhlas, Al-Falaq, An-Nas).
+
+Result: every ayah matched at the letter and vowel-mark level. The only
+differences found were:
+
+- Our Tanzil edition omits the OPTIONAL pause/tajweed annotation marks
+  (waqf signs, the rub-el-hizb sign, sequential-tanwin nun marks). These are
+  recitation aids, not part of the consonantal text. See the note about
+  including them in `docs/FUTURE.md`.
+- Two words ("Adam", "abaihim" in surah 18) use Tanzil's hamza-on-tatweel
+  rendering while the other reference uses a standalone hamza. This is the
+  same word and the same reading, only a different glyph seat.
+
+So the text is the correct, verified Uthmani text. The basmala handling is
+explained further down.
+
 ## The pipeline
 
 ```

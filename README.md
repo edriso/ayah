@@ -46,11 +46,10 @@ future Discord app would reuse `core` and `database` without changes.
 # 1. Install dependencies
 pnpm install
 
-# 2. Create the env files and fill them in
-cp packages/database/.env.example packages/database/.env
-cp apps/telegram/.env.example      apps/telegram/.env
-#    - set DATABASE_URL in both
-#    - set BOT_TOKEN in apps/telegram/.env (from @BotFather)
+# 2. Create the one env file and fill it in
+cp .env.example .env
+#    - set BOT_TOKEN (from @BotFather)
+#    - set DATABASE_URL (your MySQL connection)
 
 # 3. Download and verify the Quran text (writes a frozen data file)
 #    The text is also committed to the repo, so if you just cloned this you

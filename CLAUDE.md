@@ -78,6 +78,11 @@ real changes go through a migration so production stays in step.
 
 ## Gotchas
 
+- There is ONE `.env`, at the repo root. Every package and script loads it
+  through `loadEnv()` in `packages/core/src/env.ts`, which finds the root
+  (the folder with `pnpm-workspace.yaml`) no matter where the command runs.
+  `prisma.config.ts` has the same loader inline (the Prisma CLI loads that
+  file on its own, so it cannot import from core).
 - Prisma 7 does not read `.env` on its own and does not take the URL in the
   schema. The CLI gets the URL from `prisma.config.ts`; the running bot
   builds its own client in `src/client.ts`.

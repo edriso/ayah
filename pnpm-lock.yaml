@@ -71,6 +71,10 @@ importers:
         version: 4.1.7(@types/node@22.19.19)(vite@8.0.14(@types/node@22.19.19)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
 
   packages/core:
+    dependencies:
+      dotenv:
+        specifier: ^17.4.2
+        version: 17.4.2
     devDependencies:
       '@types/node':
         specifier: ^22.10.5

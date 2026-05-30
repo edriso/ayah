@@ -55,6 +55,19 @@ message could show a small tag like "this surah was revealed in Mecca", which
 is nice context for learners. It is informational only and nothing depends on
 it today.
 
+## Optional tajweed and pause marks
+
+The bundled Tanzil Uthmani text has the full vowel marks but not the OPTIONAL
+recitation marks (waqf/pause signs, the rub-el-hizb quarter sign, and the
+sequential-tanwin nun marks). The text is fully correct without them; they are
+recitation aids printed in some Mushafs.
+
+Tanzil can supply the text WITH these marks. A future option could let the
+fetch script download that edition (and the bot could let a user choose "with
+pause marks"). The rub-el-hizb sign would need handling so it does not appear
+oddly in the middle of a single-ayah message. The checks in `fetch-quran.ts`
+(6236 ayat, count per surah) work the same either way.
+
 ## Per-track review window
 
 The review window is fixed at ten ayat (`REVIEW_WINDOW` in
