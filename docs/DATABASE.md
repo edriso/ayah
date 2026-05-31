@@ -46,7 +46,7 @@ pnpm db:seed      fill Surah, Ayah, Track, TrackEntry from the JSON
 
 ### Step 1: data:fetch
 
-`packages/database/scripts/fetch-quran.ts` downloads the Tanzil Uthmani
+`scripts/fetch-quran.ts` downloads the Tanzil Uthmani
 "Text (with aya numbers)" file. It then checks the result hard:
 
 - there must be exactly 6236 ayat,
@@ -59,7 +59,7 @@ returning HTML), the script stops with a clear message and writes nothing.
 Only a fully correct download is saved, to:
 
 ```
-packages/database/prisma/data/quran-uthmani.json
+prisma/data/quran-uthmani.json
 ```
 
 That file also stores a SHA-256 of the text so any later change is visible.

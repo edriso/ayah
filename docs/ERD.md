@@ -82,7 +82,7 @@ there are exactly 114 surahs and 6236 ayat.
 
 MySQL has no array type, so the chosen weekdays are stored as one small
 integer. Bit 0 is Monday and bit 6 is Sunday. 127 means every day. The
-helpers live in `packages/core/src/days.ts`.
+helpers live in `src/core/days.ts`.
 
 ### The break is a single `pausedAt` timestamp
 
@@ -120,10 +120,10 @@ where `surahNumber = surah` and `numberInSurah` is between
 `max(1, n - reviewCount)` and `n - 1`. The clamp to 1 stops it crossing into
 the previous surah; when `n` is ayah 1 there is nothing to review. Today's
 ayah is shown on its own, so the longest verses are never duplicated. See
-`packages/core/src/review.ts`.
+`src/core/review.ts`.
 
 Each delivery can be more than one message: today's ayah, then the review.
 On long surahs the review is split across several messages so none exceeds
 Telegram's 4096-character limit (see `formatDailyMessages` in
-`packages/core/src/format.ts`). The default review of 10 always fits in one
+`src/core/format.ts`). The default review of 10 always fits in one
 message; only larger settings split, and then only in the longest surahs.

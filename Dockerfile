@@ -26,13 +26,10 @@ RUN apt-get update \
 RUN npm install -g pnpm@10.33.0
 
 # Copy manifests first so `pnpm install` is cached when only source changes.
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY packages/core/package.json ./packages/core/
-COPY packages/database/package.json ./packages/database/
-COPY apps/telegram/package.json ./apps/telegram/
+COPY package.json pnpm-lock.yaml ./
 # The postinstall hook runs `prisma generate`, which needs the schema/config.
-COPY packages/database/prisma ./packages/database/prisma
-COPY packages/database/prisma.config.ts ./packages/database/
+COPY prisma ./prisma
+COPY prisma.config.ts ./
 
 # Install ALL dependencies (the postinstall `prisma generate` and tsx need
 # them). We set NODE_ENV to production AFTER this so the install does not skip

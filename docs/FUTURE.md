@@ -37,7 +37,7 @@ The schema supports many tracks, and two now ship: `kids-hifz` (reverse, from
 An-Nas, the default) and `mushaf` (forward, from Al-Fatihah). A subscriber
 picks between them with `/order`, and picks a starting surah/ayah with
 `/surah`; see `ORDERS` and `buildMushafOrder` in
-`packages/database/src/reference/curriculum.ts` and `setOrder` /
+`src/database/reference/curriculum.ts` and `setOrder` /
 `setStartPosition` in the subscriber service.
 
 Still possible with no schema change, only new seeded rows:
@@ -81,7 +81,7 @@ oddly in the middle of a single-ayah message. The checks in `fetch-quran.ts`
 The PER-USER review count already ships: each subscriber sets it with
 `/review N` (0 to 20, default 10, stored in `Subscriber.reviewCount`; see
 `DEFAULT_REVIEW_COUNT` / `MIN_REVIEW_COUNT` / `MAX_REVIEW_COUNT` in
-`packages/core/src/review.ts`). What is NOT done yet is making the default or
+`src/core/review.ts`). What is NOT done yet is making the default or
 the cap depend on the TRACK, so a future "adults" track could review more by
 default. That would be a small change to where the default is read.
 

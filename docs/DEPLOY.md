@@ -18,7 +18,7 @@ pnpm install --prod=false
 pnpm data:fetch          # writes the frozen Quran data file (skip if cloned)
 pnpm db:deploy           # applies the migrations (creates the tables)
 pnpm db:seed             # fills the Quran tables and BOTH order tracks
-pnpm start               # runs apps/telegram
+pnpm start               # runs the bot (src/index.ts)
 ```
 
 `db:deploy` and `db:seed` are setup steps. Run them once per environment when
@@ -61,7 +61,7 @@ one-off job, not inside each container.
 
 The database client is tuned for shared hosting (like Hostinger) that closes
 idle connections quickly. It uses a small pool with a short idle timeout. See
-`packages/database/src/client.ts`. This is also fine on a normal MySQL.
+`src/database/client.ts`. This is also fine on a normal MySQL.
 
 ## Health check
 

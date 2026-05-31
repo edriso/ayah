@@ -5,7 +5,7 @@ Ready-to-paste text for setting up @AyahHifzBot in @BotFather (the
 Arabic too. Copy each block as-is.
 
 Note: the bot already sets its command list automatically on every start
-(via `setMyCommands` in `apps/telegram/src/bot.ts`). You only need to paste
+(via `setMyCommands` in `src/bot.ts`). You only need to paste
 the commands into BotFather if you also want them set there by hand, or if
 the bot is not running yet. Keep the two lists in sync if you change either.
 

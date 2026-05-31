@@ -9,11 +9,14 @@ Ayah is a Telegram bot that sends one Quran ayah a day to each subscriber,
 with the previous ayat of the same surah for review (a per-user count, 0-20,
 default 10). Each subscriber chooses where to begin (surah + ayah) and in
 which order to memorize: the reverse hifz order (from An-Nas, the default) or
-the forward Mushaf order (from Al-Fatihah). It is a pnpm workspace:
+the forward Mushaf order (from Al-Fatihah). It is one small TypeScript
+project, with everything under `src/`:
 
-- `packages/core` pure logic, no database, no network. Fully unit-tested.
-- `packages/database` Prisma schema, the client, and services.
-- `apps/telegram` the grammY bot: commands and the daily scheduler.
+- `src/core` pure logic, no database, no network. Fully unit-tested.
+- `src/database` the Prisma client and the database services.
+- `src/` (bot.ts, scheduler.ts, lib/, ...) the grammY bot: commands and the
+  daily scheduler. `prisma/` holds the schema, migrations, and seed; `scripts/`
+  holds the data fetch.
 
 Read `docs/ERD.md` and `docs/DATABASE.md` before changing data or the schema.
 
@@ -25,7 +28,7 @@ Read `docs/ERD.md` and `docs/DATABASE.md` before changing data or the schema.
 2. Keep `core` pure. No database or network imports there. That is what
    keeps it easy to test.
 3. The bot sends plain text, never Markdown or HTML parse_mode. Quran text
-   would make a parsed message fail with a 400. See `apps/telegram/src/lib/send.ts`.
+   would make a parsed message fail with a 400. See `src/lib/send.ts`.
 4. Advance a subscriber's position ONLY after a real send. A failed send
    must retry the same ayah, never skip it.
 5. One ayah per subscriber per local day. The `unique(subscriberId,
@@ -41,7 +44,7 @@ Read `docs/ERD.md` and `docs/DATABASE.md` before changing data or the schema.
 
 ## How the daily send works
 
-`deliverDueSubscribers` (in `apps/telegram/src/lib/deliver.ts`) runs every
+`deliverDueSubscribers` (in `src/lib/deliver.ts`) runs every
 minute. For each active, non-blocked subscriber:
 
 1. `dueLocalDate` checks their own timezone, send time, and active days.
@@ -77,7 +80,7 @@ pnpm db:studio      # browse the database
 
 ### Changing the schema
 
-Edit `packages/database/prisma/schema.prisma`, then make a migration:
+Edit `prisma/schema.prisma`, then make a migration:
 
 ```bash
 pnpm db:migrate     # prisma migrate dev: creates a new migration and applies it
@@ -89,11 +92,11 @@ real changes go through a migration so production stays in step.
 
 ## Gotchas
 
-- There is ONE `.env`, at the repo root. Every package and script loads it
-  through `loadEnv()` in `packages/core/src/env.ts`, which finds the root
-  (the folder with `pnpm-workspace.yaml`) no matter where the command runs.
-  `prisma.config.ts` has the same loader inline (the Prisma CLI loads that
-  file on its own, so it cannot import from core).
+- There is ONE `.env`, at the repo root. Code and scripts load it through
+  `loadEnv()` in `src/core/env.ts`, which finds the root (the folder with
+  `package.json`) no matter where the command runs. `prisma.config.ts` has the
+  same loader inline (the Prisma CLI loads that file on its own, so it cannot
+  import from core).
 - `NODE_ENV` defaults to `production` (in `.env.example` and the Docker
   image). `pnpm dev` sets `NODE_ENV=development` itself, so local work always
   runs in development mode (debug logs, and the Prisma client is stashed on
@@ -103,17 +106,17 @@ real changes go through a migration so production stays in step.
 - Prisma 7 does not read `.env` on its own and does not take the URL in the
   schema. The CLI gets the URL from `prisma.config.ts`; the running bot
   builds its own client in `src/client.ts`.
-- The generated Prisma client lives in `packages/database/src/generated`.
+- The generated Prisma client lives in `src/database/generated`.
   It is git-ignored. Run `pnpm db:generate` if imports from it fail.
 - `activeDays` is a 7-bit mask (bit 0 = Monday). Use the helpers in
-  `packages/core/src/days.ts`, do not do bit math by hand elsewhere.
+  `src/core/days.ts`, do not do bit math by hand elsewhere.
 - Timezone and day math always take `now` as an argument so they can be
   tested. Do not call `new Date()` deep inside pure functions.
 
 ## Where things live
 
-- Curriculum order: `packages/database/src/reference/curriculum.ts`
-- Surah names and revelation: `packages/database/src/reference/surahs.ts`
-- Ayah count oracle: `packages/database/src/reference/ayah-counts.ts`
-- Message wording (Arabic): `apps/telegram/src/lib/copy.ts`
-- The review-range (previous ayat) and next-position math: `packages/core/src/review.ts`
+- Curriculum order: `src/database/reference/curriculum.ts`
+- Surah names and revelation: `src/database/reference/surahs.ts`
+- Ayah count oracle: `src/database/reference/ayah-counts.ts`
+- Message wording (Arabic): `src/lib/copy.ts`
+- The review-range (previous ayat) and next-position math: `src/core/review.ts`

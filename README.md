@@ -25,17 +25,18 @@ developer can work on it.
 
 ## Project layout
 
-This is a small pnpm workspace with three parts:
+This is one small TypeScript project. Everything lives under `src/`, kept in
+clear folders:
 
 ```
-packages/core       Pure logic, no database and no network. Easy to test.
-packages/database   Prisma schema, the database client, and services.
-apps/telegram       The grammY bot: commands and the daily scheduler.
+src/core       Pure logic, no database and no network. Easy to test.
+src/database   The Prisma client and the database services.
+src/           The grammY bot itself: commands, the scheduler, and lib helpers.
 ```
 
-The split means the brain (`core`) is written and tested once, the database
-package owns all data access, and the app is a thin Telegram adapter. A
-future Discord app would reuse `core` and `database` without changes.
+The split means the brain (`core`) is written and tested once, `database` owns
+all data access, and the rest of `src` is a thin Telegram adapter. `prisma/`
+holds the schema, migrations, and the seed; `scripts/` holds the data fetch.
 
 ## Requirements
 
