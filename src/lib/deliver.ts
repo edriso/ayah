@@ -8,6 +8,9 @@ import {
   buildDailyContent,
   countTrackEntries,
   markBlocked,
+  getTrackByKey,
+  getEntryForAyah,
+  KIDS_TRACK,
   type DeliverableSubscriber,
 } from '../database';
 import { sendMessages } from './send';
@@ -112,6 +115,28 @@ export async function previewCurrent(sub: {
   const entry = await resolveTargetEntry(sub);
   if (!entry) return [];
   const content = await buildDailyContent(entry, sub.reviewCount);
+  return formatDailyMessages(content);
+}
+
+/**
+ * Build the delivery message(s) for any (surah, ayah), independent of any
+ * subscriber. For admin and dev testing (the /admin_preview command): see
+ * exactly what the bot would send for a chosen ayah and review window.
+ *
+ * The default order's track (kids-hifz) is used only to resolve the ayah into
+ * an entry; the rendered text depends on the ayah and the review count, not on
+ * the order, so the choice of track does not affect the output. Returns an
+ * empty array if that ayah is not seeded.
+ */
+export async function previewAyah(
+  surahNumber: number,
+  numberInSurah: number,
+  reviewCount: number,
+): Promise<string[]> {
+  const track = await getTrackByKey(KIDS_TRACK.key);
+  const entry = await getEntryForAyah(track.id, surahNumber, numberInSurah);
+  if (!entry) return [];
+  const content = await buildDailyContent(entry, reviewCount);
   return formatDailyMessages(content);
 }
 

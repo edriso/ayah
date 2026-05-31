@@ -1,7 +1,7 @@
 // Small pure parsers for command arguments. Kept apart from bot.ts so they
 // can be unit-tested without loading grammY or the database client.
 
-import { toAsciiDigits } from '../core';
+import { toAsciiDigits, MAX_REVIEW_COUNT } from '../core';
 
 /**
  * Parse "HH:MM" (24-hour) into hour/minute, or null if invalid. Arabic-Indic
@@ -54,4 +54,42 @@ export function parseSurahArg(
   if (surah < 1 || surah > MAX_SURAH) return null;
   if (ayah < 1 || ayah > ayahCountFor(surah)) return null;
   return { surah, ayah };
+}
+
+/**
+ * Parse the argument of the admin "/admin_preview" command: a starting point
+ * plus an optional review window, for testing what the bot would send.
+ *
+ *   "2"        -> { surah: 2, ayah: 1, review: null }
+ *   "2 255"    -> { surah: 2, ayah: 255, review: null }
+ *   "2 255 3"  -> { surah: 2, ayah: 255, review: 3 }
+ *
+ * The surah/ayah part is validated exactly like "/surah" (so an out-of-range
+ * ayah is rejected). The review, when given, must be 0..MAX_REVIEW_COUNT. A
+ * null review means "not specified"; the caller picks its own default. Returns
+ * null on anything malformed. Arabic-Indic digits are accepted.
+ */
+export function parseAyahPreview(
+  raw: string,
+  ayahCountFor: (surah: number) => number,
+): { surah: number; ayah: number; review: number | null } | null {
+  const parts = toAsciiDigits(raw.trim()).split(/\s+/).filter(Boolean);
+  if (parts.length < 1 || parts.length > 3) return null;
+
+  // A third part is the review count; the first one or two are surah[/ayah].
+  const reviewPart = parts.length === 3 ? parts[2] : null;
+  const surahAyah = parseSurahArg(
+    parts.slice(0, Math.min(parts.length, 2)).join(' '),
+    ayahCountFor,
+  );
+  if (!surahAyah) return null;
+
+  let review: number | null = null;
+  if (reviewPart !== null) {
+    if (!/^\d{1,2}$/.test(reviewPart)) return null;
+    const n = Number(reviewPart);
+    if (n > MAX_REVIEW_COUNT) return null;
+    review = n;
+  }
+  return { surah: surahAyah.surah, ayah: surahAyah.ayah, review };
 }

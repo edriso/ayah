@@ -31,7 +31,7 @@ import {
 import { config } from './config';
 import { logger } from './lib/logger';
 import { COPY, settingsSummary, formatTimeAr, daysSummaryAr, orderSummaryAr } from './lib/copy';
-import { previewCurrent } from './lib/deliver';
+import { previewCurrent, previewAyah } from './lib/deliver';
 import { runDeliveryOnce } from './scheduler';
 import { buildDaysKeyboard, DAY_TOGGLE_PREFIX, DAYS_DONE } from './lib/days-keyboard';
 import { buildTimeKeyboard, TIME_PICK_PREFIX } from './lib/time-keyboard';
@@ -42,7 +42,7 @@ import {
   SURAH_PAGE_PREFIX,
   SURAH_NOOP,
 } from './lib/surah-keyboard';
-import { parseTime, isValidTimezone, parseSurahArg } from './lib/parse';
+import { parseTime, isValidTimezone, parseSurahArg, parseAyahPreview } from './lib/parse';
 
 const bot = new Bot<Context>(config.botToken);
 
@@ -53,6 +53,11 @@ const ONBOARD_PICK = 'ayah:onb:pick';
 const ONBOARD_MUSHAF = 'ayah:onb:mushaf';
 const ORDER_PICK_PREFIX = 'ayah:order:';
 const PAUSE_TOGGLE = 'ayah:pause:toggle';
+
+// Default review window for /admin_preview when the admin does not give one.
+// Small on purpose: enough to show the review block renders, without a wall
+// of text. The admin can pass any 0..20 to test a specific window.
+const ADMIN_PREVIEW_REVIEW = 3;
 
 /** Make sure we have a subscriber row for whoever sent this update. */
 async function subscriberFor(ctx: Context) {
@@ -484,6 +489,34 @@ bot.command('admin_send', async (ctx) => {
   await ctx.reply(
     `Delivery run done.\nDue: ${stats.due}\nSent: ${stats.sent}\nSkipped: ${stats.skipped}\nFailed: ${stats.failed}`,
   );
+});
+
+// /admin_preview <surah> <ayah> [review]: render exactly what the bot would
+// send for a given ayah, with an optional review window, and reply it to the
+// admin's DM. A manual end-to-end test (database read + format) for any ayah,
+// without changing any subscriber or posting anywhere. The ayah defaults to 1
+// and the review window to ADMIN_PREVIEW_REVIEW when omitted.
+bot.command('admin_preview', async (ctx) => {
+  if (!isAdmin(ctx)) return;
+  const arg = commandArg(ctx, 'admin_preview');
+  if (!arg) {
+    await ctx.reply(
+      'Usage: /admin_preview <surah> <ayah> [review]\nExample: /admin_preview 2 255 3',
+    );
+    return;
+  }
+  const parsed = parseAyahPreview(arg, ayahCountFor);
+  if (!parsed) {
+    await ctx.reply('Bad input. Surah 1..114, ayah within the surah, review 0..20.');
+    return;
+  }
+  const review = parsed.review ?? ADMIN_PREVIEW_REVIEW;
+  const messages = await previewAyah(parsed.surah, parsed.ayah, review);
+  if (messages.length === 0) {
+    await ctx.reply('That ayah is not seeded. Run "pnpm db:seed".');
+    return;
+  }
+  for (const message of messages) await ctx.reply(message);
 });
 
 bot.catch((err) => {

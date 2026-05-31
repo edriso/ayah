@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseTime, isValidTimezone, parseSurahArg } from './parse';
+import { parseTime, isValidTimezone, parseSurahArg, parseAyahPreview } from './parse';
 
 describe('parseTime', () => {
   it('parses a normal 24-hour time', () => {
@@ -58,6 +58,40 @@ describe('parseSurahArg', () => {
     expect(parseSurahArg('abc', ayahCountFor)).toBeNull();
     expect(parseSurahArg('', ayahCountFor)).toBeNull();
     expect(parseSurahArg('67 5 9', ayahCountFor)).toBeNull();
+  });
+});
+
+describe('parseAyahPreview', () => {
+  const counts: Record<number, number> = { 1: 7, 2: 286, 67: 30, 114: 6 };
+  const ayahCountFor = (s: number) => counts[s] ?? 10;
+
+  it('takes a surah on its own (ayah 1, no review)', () => {
+    expect(parseAyahPreview('2', ayahCountFor)).toEqual({ surah: 2, ayah: 1, review: null });
+  });
+
+  it('takes a surah and ayah, no review', () => {
+    expect(parseAyahPreview('2 255', ayahCountFor)).toEqual({ surah: 2, ayah: 255, review: null });
+  });
+
+  it('takes a surah, ayah, and review window', () => {
+    expect(parseAyahPreview('2 255 3', ayahCountFor)).toEqual({ surah: 2, ayah: 255, review: 3 });
+    expect(parseAyahPreview('2 255 0', ayahCountFor)).toEqual({ surah: 2, ayah: 255, review: 0 });
+  });
+
+  it('accepts Arabic-Indic digits throughout', () => {
+    expect(parseAyahPreview('٢ ٢٥٥ ٣', ayahCountFor)).toEqual({ surah: 2, ayah: 255, review: 3 });
+  });
+
+  it('rejects a bad surah/ayah the same way /surah does', () => {
+    expect(parseAyahPreview('115', ayahCountFor)).toBeNull();
+    expect(parseAyahPreview('114 7', ayahCountFor)).toBeNull(); // An-Nas has 6
+  });
+
+  it('rejects a review beyond the max, junk, or too many parts', () => {
+    expect(parseAyahPreview('2 255 21', ayahCountFor)).toBeNull(); // MAX_REVIEW_COUNT is 20
+    expect(parseAyahPreview('2 255 x', ayahCountFor)).toBeNull();
+    expect(parseAyahPreview('2 255 3 9', ayahCountFor)).toBeNull();
+    expect(parseAyahPreview('', ayahCountFor)).toBeNull();
   });
 });
 

@@ -35,10 +35,23 @@ Set these env vars on the host (see the single root `.env.example`):
 - `DATABASE_URL`  the MySQL connection string
 - `BOT_TOKEN`     from @BotFather
 - `TZ_NAME`       default timezone for new subscribers, e.g. Africa/Cairo
-- `ADMIN_TELEGRAM_ID`  optional, unlocks /admin_* for you
+- `ADMIN_TELEGRAM_ID`  optional, unlocks the admin commands for you
 - `NODE_ENV`  defaults to `production` in `.env.example` and in the Docker
   image, so you usually do not need to touch it. (`pnpm dev` always runs in
   development mode regardless, for local work.)
+
+## Admin commands
+
+With `ADMIN_TELEGRAM_ID` set, message the bot privately (these are never shown
+in the public command menu, and only your id may run them):
+
+- `/admin_health`  uptime and current time, a quick "is it up?".
+- `/admin_send`  fire the delivery batch by hand (the exact path the cron
+  uses); a smoke test right after a deploy.
+- `/admin_preview <surah> <ayah> [review]`  render exactly what the bot would
+  send for a given ayah, into your DM, without touching any subscriber. The
+  ayah defaults to 1 and the review window to 3. Example: `/admin_preview 2
+  255 3` shows Ayat al-Kursi with three review ayat above it.
 
 ## With Docker
 
