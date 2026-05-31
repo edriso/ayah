@@ -54,7 +54,7 @@ export function countTrackEntries(trackId: number): Promise<number> {
   return prisma.trackEntry.count({ where: { trackId } });
 }
 
-// An entry joined with its ayah and surah — everything we need to build a
+// An entry joined with its ayah and surah: everything we need to build a
 // message and to know where the subscriber is in the track.
 const entryInclude = {
   ayah: { include: { surah: true } },

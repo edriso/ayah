@@ -1,8 +1,29 @@
 // All the Arabic text the bot shows. Kept in one file so wording is easy to
 // review and change without touching logic. Numbers shown to users are in
 // Arabic-Indic digits to match the Quran text.
+//
+// Bidi note: this text is right-to-left, but commands, clock times and
+// timezone names are left-to-right. When a left-to-right run sits in the
+// middle of Arabic, the punctuation around it can render in the wrong order
+// (a known bidi problem). The ltr() helper below wraps such a run in Unicode
+// isolate characters so it always renders correctly. A lone command at the
+// very end of a line is fine without it, so we only wrap the tricky cases
+// (examples, formats, timezone names).
 
-import { activeDaysList, toArabicDigits, ALL_DAYS } from '@ayah/core';
+import { isDayActive, activeDaysList, toArabicDigits, ALL_DAYS } from '@ayah/core';
+
+// Unicode isolate characters: First Strong Isolate (U+2066) ... Pop
+// Directional Isolate (U+2069). The standard recommends these (over the older
+// embedding marks) for dropping a left-to-right run into right-to-left text.
+// Built from code points because the characters themselves are invisible.
+const FIRST_STRONG_ISOLATE = String.fromCodePoint(0x2066);
+const POP_DIRECTIONAL_ISOLATE = String.fromCodePoint(0x2069);
+
+/** Wrap a left-to-right run (a command, a time, a timezone) so it renders
+ *  correctly inside right-to-left Arabic text. */
+export function ltr(run: string): string {
+  return `${FIRST_STRONG_ISOLATE}${run}${POP_DIRECTIONAL_ISOLATE}`;
+}
 
 /** Arabic names for ISO weekdays (1 = Monday ... 7 = Sunday). */
 const DAY_NAMES_AR: Record<number, string> = {
@@ -15,6 +36,13 @@ const DAY_NAMES_AR: Record<number, string> = {
   7: 'الأحد',
 };
 
+// The weekdays in the order Arabic speakers expect to read them: Saturday
+// first, Friday last. The values are ISO weekday numbers (Monday = 1 ...
+// Sunday = 7) so they still match the bitmask helpers in core; only the
+// display order is different. Both the day picker and the settings summary
+// use this so the two always agree.
+export const WEEKDAY_DISPLAY_ORDER: readonly number[] = [6, 7, 1, 2, 3, 4, 5];
+
 export function dayNameAr(isoWeekday: number): string {
   return DAY_NAMES_AR[isoWeekday] ?? String(isoWeekday);
 }
@@ -26,10 +54,11 @@ export function formatTimeAr(hour: number, minute: number): string {
   return `${h}:${m}`;
 }
 
-/** A friendly list of the active days, or "every day" when all are on. */
+/** A friendly list of the active days (Saturday first), or "every day" when
+ *  all are on. */
 export function daysSummaryAr(mask: number): string {
   if (mask === ALL_DAYS) return 'كل الأيام';
-  const days = activeDaysList(mask);
+  const days = WEEKDAY_DISPLAY_ORDER.filter((iso) => isDayActive(mask, iso));
   if (days.length === 0) return 'لا يوجد (لن تصلك آيات)';
   return days.map(dayNameAr).join('، ');
 }
@@ -57,9 +86,9 @@ export function orderSummaryAr(orderKey: string): string {
   return ORDER_LABEL_AR[orderKey] ?? orderKey;
 }
 
-/** "سورة الملك — آية ٥": where the subscriber stands (or starts) now. */
+/** "سورة الملك، آية ٥": where the subscriber stands (or starts) now. */
 export function positionSummaryAr(surahNameAr: string, numberInSurah: number): string {
-  return `سورة ${surahNameAr} — آية ${toArabicDigits(numberInSurah)}`;
+  return `سورة ${surahNameAr}، آية ${toArabicDigits(numberInSurah)}`;
 }
 
 export interface SettingsView {
@@ -90,7 +119,7 @@ export function settingsSummary(s: SettingsView): string {
     `• وقت الإرسال: ${formatTimeAr(s.deliveryHour, s.deliveryMinute)}`,
     `• الأيام: ${daysSummaryAr(s.activeDays)}`,
     `• المراجعة: ${reviewSummaryAr(s.reviewCount)}`,
-    `• المنطقة الزمنية: ${s.timezone}`,
+    `• المنطقة الزمنية: ${ltr(s.timezone)}`,
   ];
   if (s.position) {
     lines.push(`• الموضع: ${positionSummaryAr(s.position.surahNameAr, s.position.numberInSurah)}`);
@@ -101,7 +130,9 @@ export function settingsSummary(s: SettingsView): string {
 
 export const COPY = {
   // Shown to a returning user (one who has already started). The starting
-  // point is no longer hard-coded here — it is a choice shown in /settings.
+  // point is no longer hard-coded here; it is a choice shown in /settings.
+  // Each command sits at the end of its own line so it stays tappable and
+  // renders cleanly in the right-to-left text.
   welcome: (settings: string) =>
     [
       'السلام عليكم ورحمة الله 🌿',
@@ -112,7 +143,9 @@ export const COPY = {
       '',
       settings,
       '',
-      'لتغيير سورة البداية اكتب /surah، ولتغيير الترتيب اكتب /order، ولعرض كل الأوامر اكتب /help.',
+      'لتغيير سورة البداية: /surah',
+      'لتغيير الترتيب: /order',
+      'لعرض كل الأوامر: /help',
     ].join('\n'),
 
   // Shown to a brand-new user, paired with the onboarding keyboard
@@ -127,19 +160,22 @@ export const COPY = {
     'يمكنك تغيير كل ذلك لاحقًا في أي وقت.',
   ].join('\n'),
 
+  // Command first on each line (so it stays tappable), then a colon and the
+  // Arabic description. Examples that carry extra latin (a time, a timezone,
+  // an argument) are wrapped with ltr() so they do not garble.
   help: [
     'بوت "آية" يساعدك على حفظ القرآن بإرسال آية واحدة كل يوم مع آيات سابقة للمراجعة.',
     '',
     'الأوامر:',
-    '/today — عرض آية اليوم الآن (بدون تغيير موضعك)',
-    '/surah — اختيار سورة البداية، أو /surah رقم_السورة رقم_الآية مثال: /surah 67 5',
-    '/order — اختيار الترتيب: منهج الحفظ (من الناس) أو ترتيب المصحف (من الفاتحة)',
-    '/time HH:MM — ضبط وقت الإرسال، مثال: /time 07:00',
-    '/days — اختيار أيام الإرسال',
-    '/review N — عدد آيات المراجعة (من ٠ إلى ٢٠)، مثال: /review 5',
-    '/timezone — ضبط المنطقة الزمنية، مثال: /timezone Africa/Cairo',
-    '/pause — أخذ راحة أو العودة منها (يبقى موضعك محفوظًا)',
-    '/settings — عرض إعداداتك الحالية',
+    '/today: عرض آية اليوم الآن (بدون تغيير موضعك)',
+    `/surah: اختيار سورة البداية، أو اكتب رقم السورة والآية مثل ${ltr('/surah 67 5')}`,
+    '/order: اختيار الترتيب (منهج الحفظ من الناس، أو ترتيب المصحف من الفاتحة)',
+    `/time: ضبط وقت الإرسال، مثل ${ltr('/time 07:00')}`,
+    '/days: اختيار أيام الإرسال',
+    `/review: عدد آيات المراجعة من ٠ إلى ٢٠، مثل ${ltr('/review 5')}`,
+    `/timezone: ضبط المنطقة الزمنية، مثل ${ltr('/timezone Africa/Cairo')}`,
+    '/pause: أخذ راحة أو العودة منها (يبقى موضعك محفوظًا)',
+    '/settings: عرض إعداداتك الحالية',
   ].join('\n'),
 
   // Onboarding keyboard button labels.
@@ -147,14 +183,20 @@ export const COPY = {
   pickSurahBtn: '📖 اختر سورة البداية',
   mushafOrderBtn: '🔀 ترتيب المصحف (من الفاتحة)',
 
-  // Surah / start-point copy.
+  // Surah / start-point copy. The example with an ayah number is on its own
+  // line and wrapped with ltr() so it reads left-to-right.
   surahPrompt:
-    'اختر السورة التي تريد أن تبدأ بها الحفظ:\nأو اكتب: /surah رقم_السورة رقم_الآية (مثال: /surah 67 5)',
+    'اختر السورة التي تريد أن تبدأ بها الحفظ.\n' +
+    `أو اكتب رقم السورة (والآية إن أردت)، مثل ${ltr('/surah 67 5')}`,
   surahInvalid:
-    'تعذّر فهم ذلك. اكتب رقم السورة (١ إلى ١١٤)، ويمكنك إضافة رقم الآية بعده.\nمثال: /surah 67 5',
+    'تعذّر فهم ذلك. اكتب رقم السورة من ١ إلى ١١٤، ويمكنك إضافة رقم الآية بعده.\n' +
+    `مثل ${ltr('/surah 67 5')}`,
   startSet: (surahNameAr: string, numberInSurah: number) =>
-    `تم ✅ ستبدأ من ${positionSummaryAr(surahNameAr, numberInSurah)}.\n` +
-    'لرؤيتها الآن اضغط /today. لتبدأ من آية معيّنة اكتب: /surah رقم_السورة رقم_الآية',
+    [
+      `تم ✅ ستبدأ من ${positionSummaryAr(surahNameAr, numberInSurah)}.`,
+      'لرؤيتها الآن اضغط /today',
+      `لتبدأ من آية معيّنة اكتب رقم السورة ورقم الآية، مثل ${ltr('/surah 67 5')}`,
+    ].join('\n'),
 
   // Order copy.
   orderPrompt: 'اختر ترتيب الحفظ:',
@@ -168,31 +210,43 @@ export const COPY = {
 
   brokenOrNotStarted: 'لم نتمكن من تجهيز آية لك الآن، حاول لاحقًا بإذن الله.',
 
-  paused: 'تم إيقاف الإرسال مؤقتًا. خذ راحتك 🌿 وعندما تعود اكتب /resume لتكمل من حيث توقفت.',
-  alreadyPaused: 'أنت في وضع الراحة بالفعل. اكتب /resume عندما تريد العودة.',
+  // The command sits at the end of its line so it stays tappable and the
+  // right-to-left text does not reorder around it.
+  paused: 'تم إيقاف الإرسال مؤقتًا، وسيبقى موضعك محفوظًا 🌿\nوعندما تريد العودة اكتب /pause',
+  alreadyPaused: 'أنت في وضع الراحة بالفعل. للعودة اكتب /pause',
   resumed: 'أهلًا بعودتك 🌿 سنكمل من حيث توقفت بإذن الله.',
   alreadyActive: 'أنت لست في وضع الراحة. الإرسال يعمل بالفعل ✅',
-  pausedHint: 'تذكير: أنت في وضع الراحة الآن، فلن تصلك الآيات تلقائيًا. اكتب /resume للعودة.',
+  pausedHint: 'تذكير: أنت في وضع الراحة الآن، فلن تصلك الآيات تلقائيًا.\nللعودة اكتب /pause',
 
-  timePrompt: 'اختر وقت الإرسال من الأزرار، أو اكتبه يدويًا بصيغة /time HH:MM (مثال: /time 07:00):',
-  timeInvalid: 'صيغة الوقت غير صحيحة. اكتب الوقت بصيغة ٢٤ ساعة، مثال: /time 07:00',
+  // The clock format and examples are wrapped with ltr() and put on their own
+  // line, so the latin parts never reorder inside the Arabic sentence.
+  timePrompt:
+    'اختر وقت الإرسال من الأزرار، أو اكتبه بنفسك بهذه الصيغة (٢٤ ساعة):\n' +
+    `${ltr('/time HH:MM')}\n` +
+    `مثل ${ltr('/time 07:00')}`,
+  timeInvalid: `صيغة الوقت غير صحيحة. اكتب الوقت بنظام ٢٤ ساعة، مثل ${ltr('/time 07:00')}`,
   timeUpdated: (t: string, tz: string) =>
-    `تم ضبط وقت الإرسال على ${t} حسب منطقتك (${tz}) ✅\nإن لم تكن منطقتك صحيحة فاضبطها عبر /timezone.`,
+    `تم ضبط وقت الإرسال على ${ltr(t)} حسب منطقتك (${ltr(tz)}) ✅\n` +
+    'إن لم تكن منطقتك صحيحة فاضبطها عبر /timezone',
 
-  tzPrompt: 'اختر منطقتك الزمنية من المدن التالية، أو اكتب /timezone Area/City إن لم تجد مدينتك:',
-  tzInvalid: 'اسم المنطقة الزمنية غير صحيح. مثال صحيح: Africa/Cairo',
-  tzUpdated: (tz: string) => `تم ضبط المنطقة الزمنية على ${tz} ✅`,
+  tzPrompt:
+    'اختر منطقتك الزمنية من المدن التالية، أو اكتبها بنفسك بهذه الصيغة:\n' +
+    `${ltr('/timezone Area/City')}\n` +
+    `مثل ${ltr('/timezone Africa/Cairo')}`,
+  tzInvalid: `اسم المنطقة الزمنية غير صحيح. مثال صحيح: ${ltr('Africa/Cairo')}`,
+  tzUpdated: (tz: string) => `تم ضبط المنطقة الزمنية على ${ltr(tz)} ✅`,
 
   daysPrompt: 'اختر الأيام التي تريد أن تصلك فيها الآيات، ثم اضغط "تم":',
   daysUpdated: (summary: string) => `تم تحديث أيام الإرسال: ${summary} ✅`,
-  daysNone: 'لم تختر أي يوم، لن تصلك آيات. اختر يومًا واحدًا على الأقل، أو خذ راحة عبر /break.',
+  daysNone: 'لم تختر أي يوم، لن تصلك آيات. اختر يومًا واحدًا على الأقل، أو خذ راحة عبر /pause',
 
   reviewUsage: (current: number) =>
-    `عدد آيات المراجعة الحالي: ${reviewSummaryAr(current)}.\n` +
-    'لتغييره اكتب: /review N\n' +
-    'حيث N رقم من ٠ إلى ٢٠. مثال: /review 5\n' +
-    'اكتب /review 0 لإيقاف المراجعة والاكتفاء بآية اليوم.',
-  reviewInvalid: 'الرجاء كتابة رقم صحيح من ٠ إلى ٢٠. مثال: /review 5',
+    [
+      `عدد آيات المراجعة الحالي: ${reviewSummaryAr(current)}.`,
+      `لتغييره اكتب رقمًا من ٠ إلى ٢٠، مثل ${ltr('/review 5')}`,
+      `واكتب ${ltr('/review 0')} لإيقاف المراجعة والاكتفاء بآية اليوم.`,
+    ].join('\n'),
+  reviewInvalid: `الرجاء كتابة رقم صحيح من ٠ إلى ٢٠، مثل ${ltr('/review 5')}`,
   reviewUpdated: (count: number) =>
     count === 0
       ? 'تم إيقاف المراجعة. ستصلك آية اليوم فقط ✅'

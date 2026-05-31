@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { SURAHS } from './surahs';
 import { AYAH_COUNTS, TOTAL_AYAT, ayahCountFor } from './ayah-counts';
-import { buildKidsOrder, buildMushafOrder, ORDERS, orderForKey } from './curriculum';
+import { buildKidsOrder, buildMushafOrder, ORDERS } from './curriculum';
 
 describe('surah reference table', () => {
   it('has all 114 surahs', () => {
@@ -88,10 +88,7 @@ describe('mushaf (forward) curriculum order', () => {
 });
 
 describe('ORDERS', () => {
-  it('lists both tracks with the surah each starts at', () => {
+  it('lists the kids (reverse) and mushaf (forward) tracks', () => {
     expect(ORDERS.map((o) => o.key)).toEqual(['kids-hifz', 'mushaf']);
-    expect(orderForKey('kids-hifz')?.startSurah).toBe(114);
-    expect(orderForKey('mushaf')?.startSurah).toBe(1);
-    expect(orderForKey('nope')).toBeUndefined();
   });
 });

@@ -16,7 +16,7 @@ export type DeliverableSubscriber = Awaited<ReturnType<typeof listDeliverableSub
 /**
  * Every subscriber the bot may send to right now: active (not on a break)
  * and reachable (not blocked). The caller still checks each one's own send
- * time and timezone before delivering — this query just trims the obvious
+ * time and timezone before delivering; this query just trims the obvious
  * skips at the database level.
  */
 export function listDeliverableSubscribers() {

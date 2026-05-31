@@ -28,7 +28,7 @@ are seeded, so you cannot forget.
 
 `db:seed` is idempotent and per-track: it skips work already done and only
 fills in what is missing. So adding a new order (a new `Track`) ships by
-re-running `pnpm db:seed` — no migration is needed, because tracks are data.
+re-running `pnpm db:seed`. No migration is needed, because tracks are data.
 
 Set these env vars on the host (see the single root `.env.example`):
 

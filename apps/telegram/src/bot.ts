@@ -17,6 +17,7 @@ import {
   setStartPosition,
   setOrder,
   getEntryForAyah,
+  getEntryAtPosition,
   getProgressView,
   getTrackByKey,
   ORDERS,
@@ -57,6 +58,16 @@ const PAUSE_TOGGLE = 'ayah:pause:toggle';
 async function subscriberFor(ctx: Context) {
   if (!ctx.from) return null;
   return ensureSubscriber(BigInt(ctx.from.id), config.defaultTimezone);
+}
+
+/**
+ * Swallow Telegram's "message is not modified" 400 and rethrow anything else.
+ * That 400 happens when an edit would change nothing (e.g. a stale or
+ * double-tapped page button re-rendering the same page); it is harmless.
+ */
+function ignoreNotModified(err: unknown): void {
+  const description = (err as { description?: string }).description ?? '';
+  if (!description.includes('message is not modified')) throw err;
 }
 
 // ─── Shared helpers ─────────────────────────────────────────────────
@@ -101,17 +112,13 @@ function buildOrderKeyboard(): InlineKeyboard {
   return kb;
 }
 
-/** Move the subscriber to an order (track) AND a starting (surah, ayah) in
- *  one go. Used by the onboarding buttons. Returns the chosen entry. */
-async function applyOrderStart(
-  subscriberId: number,
-  trackKey: string,
-  surah: number,
-  ayah: number,
-): Promise<EntryWithAyah> {
+/** Move the subscriber to an order (track) and start them at its beginning
+ *  (position 0: An-Nas for the reverse order, Al-Fatihah for the Mushaf
+ *  order). Used by the onboarding buttons. Returns the chosen entry. */
+async function applyOrderAtStart(subscriberId: number, trackKey: string): Promise<EntryWithAyah> {
   const track = await getTrackByKey(trackKey);
-  const entry = await getEntryForAyah(track.id, surah, ayah);
-  if (!entry) throw new Error(`No entry for ${surah}:${ayah} in track ${trackKey}`);
+  const entry = await getEntryAtPosition(track.id, 0);
+  if (!entry) throw new Error(`Track ${trackKey} has no entry at position 0`);
   await setOrder(subscriberId, track.id, entry.id);
   return entry;
 }
@@ -341,7 +348,7 @@ bot.callbackQuery(new RegExp(`^${TZ_PICK_PREFIX}(\\d+)$`), async (ctx) => {
 bot.callbackQuery(ONBOARD_DEFAULT, async (ctx) => {
   const sub = await subscriberFor(ctx);
   if (!sub) return void ctx.answerCallbackQuery();
-  const entry = await applyOrderStart(sub.id, KIDS_TRACK.key, 114, 1);
+  const entry = await applyOrderAtStart(sub.id, KIDS_TRACK.key);
   await ctx.editMessageReplyMarkup(); // remove the keyboard
   await ctx.reply(COPY.startSet(entry.ayah.surah.nameAr, entry.ayah.numberInSurah));
   await ctx.answerCallbackQuery();
@@ -359,7 +366,7 @@ bot.callbackQuery(ONBOARD_PICK, async (ctx) => {
 bot.callbackQuery(ONBOARD_MUSHAF, async (ctx) => {
   const sub = await subscriberFor(ctx);
   if (!sub) return void ctx.answerCallbackQuery();
-  await applyOrderStart(sub.id, MUSHAF_TRACK.key, 1, 1);
+  await applyOrderAtStart(sub.id, MUSHAF_TRACK.key);
   await ctx.editMessageText(`${COPY.orderSet(MUSHAF_TRACK.key)}\n\n${COPY.surahPrompt}`, {
     reply_markup: buildSurahKeyboard(SURAHS),
   });
@@ -368,10 +375,14 @@ bot.callbackQuery(ONBOARD_MUSHAF, async (ctx) => {
 
 // ─── Surah-picker buttons ───────────────────────────────────────────
 
-// Page navigation: redraw the keyboard at the requested page.
+// Page navigation: redraw the keyboard at the requested page. A stale or
+// double-tapped button can re-render the same page, so ignore the harmless
+// "not modified" error that would cause.
 bot.callbackQuery(new RegExp(`^${SURAH_PAGE_PREFIX}(\\d+)$`), async (ctx) => {
   const page = Number(ctx.match![1]);
-  await ctx.editMessageReplyMarkup({ reply_markup: buildSurahKeyboard(SURAHS, page) });
+  await ctx
+    .editMessageReplyMarkup({ reply_markup: buildSurahKeyboard(SURAHS, page) })
+    .catch(ignoreNotModified);
   await ctx.answerCallbackQuery();
 });
 
@@ -426,11 +437,21 @@ bot.callbackQuery(new RegExp(`^${ORDER_PICK_PREFIX}(.+)$`), async (ctx) => {
 bot.callbackQuery(PAUSE_TOGGLE, async (ctx) => {
   const sub = await subscriberFor(ctx);
   if (!sub) return void ctx.answerCallbackQuery();
-  await togglePause(ctx, sub);
-  // Redraw the toggle to reflect the flipped state (was paused -> now active).
-  const nowPaused = sub.pausedAt === null;
-  await ctx.editMessageReplyMarkup({ reply_markup: buildSettingsKeyboard(nowPaused) });
-  await ctx.answerCallbackQuery();
+  const wasPaused = sub.pausedAt !== null;
+  if (wasPaused) await resumeSubscriber(sub.id);
+  else await pauseSubscriber(sub.id);
+  // Re-render the whole settings card in place so the status line and the
+  // toggle button both reflect the new state, and toast the change. A fresh
+  // read reflects the row we just updated.
+  const fresh = await subscriberFor(ctx);
+  if (fresh) {
+    await ctx
+      .editMessageText(await settingsText(fresh), {
+        reply_markup: buildSettingsKeyboard(fresh.pausedAt !== null),
+      })
+      .catch(ignoreNotModified);
+  }
+  await ctx.answerCallbackQuery({ text: wasPaused ? 'عُدت من الراحة ✅' : 'في وضع الراحة ⏸️' });
 });
 
 // ─── Admin commands ─────────────────────────────────────────────────

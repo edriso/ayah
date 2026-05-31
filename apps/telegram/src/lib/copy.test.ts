@@ -7,6 +7,7 @@ import {
   formatTimeAr,
   orderSummaryAr,
   positionSummaryAr,
+  ltr,
 } from './copy';
 
 describe('formatTimeAr', () => {
@@ -21,6 +22,21 @@ describe('daysSummaryAr', () => {
     expect(daysSummaryAr(ALL_DAYS)).toBe('كل الأيام');
     expect(daysSummaryAr(NO_DAYS)).toContain('لا يوجد');
     expect(daysSummaryAr(maskFromDays([5]))).toBe('الجمعة');
+  });
+
+  it('lists days Saturday first, whatever order they were set in', () => {
+    // Monday (1) and Saturday (6): Saturday must come first.
+    expect(daysSummaryAr(maskFromDays([1, 6]))).toBe('السبت، الإثنين');
+    // Friday (5) is always last.
+    expect(daysSummaryAr(maskFromDays([6, 5]))).toBe('السبت، الجمعة');
+  });
+});
+
+describe('ltr (bidi isolation)', () => {
+  it('wraps a run in the isolate characters so latin reads left-to-right', () => {
+    const open = String.fromCodePoint(0x2066); // First Strong Isolate
+    const close = String.fromCodePoint(0x2069); // Pop Directional Isolate
+    expect(ltr('/time 07:00')).toBe(`${open}/time 07:00${close}`);
   });
 });
 
@@ -72,7 +88,7 @@ describe('settingsSummary status line', () => {
       position: { surahNameAr: 'الملك', numberInSurah: 5 },
       orderKey: 'mushaf',
     });
-    expect(summary).toContain('• الموضع: سورة الملك — آية ٥');
+    expect(summary).toContain('• الموضع: سورة الملك، آية ٥');
     expect(summary).toContain('• الترتيب: ترتيب المصحف (من الفاتحة)');
   });
 });
@@ -85,7 +101,7 @@ describe('orderSummaryAr / positionSummaryAr', () => {
   });
 
   it('renders a position with Arabic-Indic digits', () => {
-    expect(positionSummaryAr('الفاتحة', 1)).toBe('سورة الفاتحة — آية ١');
-    expect(positionSummaryAr('البقرة', 25)).toBe('سورة البقرة — آية ٢٥');
+    expect(positionSummaryAr('الفاتحة', 1)).toBe('سورة الفاتحة، آية ١');
+    expect(positionSummaryAr('البقرة', 25)).toBe('سورة البقرة، آية ٢٥');
   });
 });

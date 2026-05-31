@@ -31,7 +31,7 @@ Read `docs/ERD.md` and `docs/DATABASE.md` before changing data or the schema.
 5. One ayah per subscriber per local day. The `unique(subscriberId,
    scheduledFor)` index on `DeliveryLog` is the lock. Do not work around it.
 6. A track is the whole Quran in one order, every ayah present. There are two:
-   `kids-hifz` (reverse, from An-Nas — the default) and `mushaf` (forward,
+   `kids-hifz` (reverse, from An-Nas, the default) and `mushaf` (forward,
    from Al-Fatihah). Both are seeded data, not code. Choosing a STARTING POINT
    is just pointing `Subscriber.currentEntryId` at the matching `TrackEntry`
    (see `setStartPosition`); choosing an ORDER is moving the subscriber to the

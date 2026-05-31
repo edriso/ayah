@@ -33,22 +33,11 @@ export const MUSHAF_TRACK = {
 
 /**
  * The orders a subscriber can choose between. The app reads this so it never
- * hard-codes a track key, and the surah each one starts at (position 0) is
- * handy for copy. The Arabic labels live in the telegram app's copy.ts (all
- * user-facing wording is kept there), keyed by `key`.
+ * hard-codes the set of track keys (the order picker is built from it, and
+ * the startup check seeds every key in it). The Arabic labels live in the
+ * telegram app's copy.ts, where all user-facing wording is kept.
  */
-export const ORDERS = [
-  { key: KIDS_TRACK.key, startSurah: 114 },
-  { key: MUSHAF_TRACK.key, startSurah: 1 },
-] as const;
-
-/** A track key the bot knows how to offer. */
-export type OrderKey = (typeof ORDERS)[number]['key'];
-
-/** Look up the order descriptor for a track key, or undefined if unknown. */
-export function orderForKey(key: string) {
-  return ORDERS.find((o) => o.key === key);
-}
+export const ORDERS = [{ key: KIDS_TRACK.key }, { key: MUSHAF_TRACK.key }] as const;
 
 export interface CurriculumStep {
   surahNumber: number;

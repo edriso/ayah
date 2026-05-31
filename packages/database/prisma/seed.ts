@@ -46,7 +46,7 @@ async function main() {
   verify(data);
 
   // Step 1: the holy text. Seed it once; skip if it is already fully in
-  // place, but DO NOT return early — tracks are seeded below and a track may
+  // place, but DO NOT return early. Tracks are seeded below, and a track may
   // be new even when the text is not (e.g. adding the Mushaf track to an
   // existing deployment). A partial text is a hard error.
   const existingAyat = await prisma.ayah.count();
@@ -109,7 +109,7 @@ async function seedText(data: QuranData): Promise<void> {
 
 /**
  * Make sure one track exists with all its entries. Upserts the Track row,
- * then — only if its entries are not already complete — creates them from the
+ * then, only if its entries are not already complete, creates them from the
  * given order. Idempotent: a fully-seeded track is left untouched.
  */
 async function ensureTrack(

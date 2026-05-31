@@ -34,7 +34,7 @@ query are all reused.
 ## More tracks
 
 The schema supports many tracks, and two now ship: `kids-hifz` (reverse, from
-An-Nas — the default) and `mushaf` (forward, from Al-Fatihah). A subscriber
+An-Nas, the default) and `mushaf` (forward, from Al-Fatihah). A subscriber
 picks between them with `/order`, and picks a starting surah/ayah with
 `/surah`; see `ORDERS` and `buildMushafOrder` in
 `packages/database/src/reference/curriculum.ts` and `setOrder` /
