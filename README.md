@@ -105,6 +105,7 @@ pnpm db:studio    # open Prisma Studio
 - `docs/ERD.md` the data model and why it is shaped this way
 - `docs/DATABASE.md` the Quran data, seeding, and safety checks
 - `docs/DEPLOY.md` how to run it in production
+- `docs/BOTFATHER.md` paste-ready name, about, description, and commands
 - `docs/FUTURE.md` planned features (the channel bot, Discord)
 
 ## License
