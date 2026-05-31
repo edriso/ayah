@@ -13,7 +13,17 @@
 FROM node:22-slim
 WORKDIR /app
 
-RUN corepack enable
+# openssl: Prisma's CLI engines (migrate/seed) need libssl, which node:22-slim
+# omits; without it Prisma warns and guesses. ca-certificates: TLS roots.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends openssl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install the pinned pnpm GLOBALLY rather than via corepack. The bot's CMD is
+# `pnpm start`, so it invokes pnpm at container startup; with corepack, that
+# triggers an interactive "download pnpm?" prompt for the runtime `node` user,
+# which hangs a detached (`up -d`) container. A global pnpm needs no download.
+RUN npm install -g pnpm@10.33.0
 
 # Copy manifests first so `pnpm install` is cached when only source changes.
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
