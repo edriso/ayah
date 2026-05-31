@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { SURAHS } from './surahs';
 import { AYAH_COUNTS, TOTAL_AYAT, ayahCountFor } from './ayah-counts';
-import { buildKidsOrder } from './curriculum';
+import { buildKidsOrder, buildMushafOrder, ORDERS, orderForKey } from './curriculum';
 
 describe('surah reference table', () => {
   it('has all 114 surahs', () => {
@@ -60,5 +60,38 @@ describe('kids curriculum order', () => {
     // An-Nas has 6 ayat, so steps 0..5 are 114:1..114:6, then 113:1.
     expect(order[5]).toEqual({ surahNumber: 114, numberInSurah: 6 });
     expect(order[6]).toEqual({ surahNumber: 113, numberInSurah: 1 });
+  });
+});
+
+describe('mushaf (forward) curriculum order', () => {
+  const order = buildMushafOrder(ayahCountFor);
+
+  it('has one step per ayah in the whole Quran', () => {
+    expect(order).toHaveLength(6236);
+  });
+
+  it('starts at Al-Fatihah (1:1) and ends at An-Nas (114:6)', () => {
+    expect(order[0]).toEqual({ surahNumber: 1, numberInSurah: 1 });
+    expect(order[order.length - 1]).toEqual({ surahNumber: 114, numberInSurah: 6 });
+  });
+
+  it('walks surahs from 1 up to 114, ayat ascending inside each', () => {
+    // Al-Fatihah has 7 ayat, so steps 0..6 are 1:1..1:7, then 2:1.
+    expect(order[6]).toEqual({ surahNumber: 1, numberInSurah: 7 });
+    expect(order[7]).toEqual({ surahNumber: 2, numberInSurah: 1 });
+  });
+
+  it('is the exact reverse-surah counterpart of the kids order', () => {
+    // Same multiset of steps, different surah direction.
+    expect(order).toHaveLength(buildKidsOrder(ayahCountFor).length);
+  });
+});
+
+describe('ORDERS', () => {
+  it('lists both tracks with the surah each starts at', () => {
+    expect(ORDERS.map((o) => o.key)).toEqual(['kids-hifz', 'mushaf']);
+    expect(orderForKey('kids-hifz')?.startSurah).toBe(114);
+    expect(orderForKey('mushaf')?.startSurah).toBe(1);
+    expect(orderForKey('nope')).toBeUndefined();
   });
 });

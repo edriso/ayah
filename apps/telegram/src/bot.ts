@@ -1,4 +1,4 @@
-import { Bot, type Context } from 'grammy';
+import { Bot, InlineKeyboard, type Context } from 'grammy';
 import {
   toggleDay,
   activeDaysList,
@@ -14,23 +14,120 @@ import {
   setReviewCount,
   pauseSubscriber,
   resumeSubscriber,
+  setStartPosition,
+  setOrder,
+  getEntryForAyah,
+  getProgressView,
+  getTrackByKey,
+  ORDERS,
+  KIDS_TRACK,
+  MUSHAF_TRACK,
+  SURAHS,
+  ayahCountFor,
+  type EntryWithAyah,
+  type Subscriber,
 } from '@ayah/database';
 import { config } from './config';
 import { logger } from './lib/logger';
-import { COPY, settingsSummary, formatTimeAr, daysSummaryAr } from './lib/copy';
+import { COPY, settingsSummary, formatTimeAr, daysSummaryAr, orderSummaryAr } from './lib/copy';
 import { previewCurrent } from './lib/deliver';
 import { runDeliveryOnce } from './scheduler';
 import { buildDaysKeyboard, DAY_TOGGLE_PREFIX, DAYS_DONE } from './lib/days-keyboard';
 import { buildTimeKeyboard, TIME_PICK_PREFIX } from './lib/time-keyboard';
 import { buildTimezoneKeyboard, TZ_PICK_PREFIX, COMMON_TIMEZONES } from './lib/timezone-keyboard';
-import { parseTime, isValidTimezone } from './lib/parse';
+import {
+  buildSurahKeyboard,
+  SURAH_PICK_PREFIX,
+  SURAH_PAGE_PREFIX,
+  SURAH_NOOP,
+} from './lib/surah-keyboard';
+import { parseTime, isValidTimezone, parseSurahArg } from './lib/parse';
 
 const bot = new Bot<Context>(config.botToken);
+
+// Callback data for the onboarding chooser, the order picker, and the
+// settings keyboard. Namespaced like the other pickers so they never clash.
+const ONBOARD_DEFAULT = 'ayah:onb:default';
+const ONBOARD_PICK = 'ayah:onb:pick';
+const ONBOARD_MUSHAF = 'ayah:onb:mushaf';
+const ORDER_PICK_PREFIX = 'ayah:order:';
+const PAUSE_TOGGLE = 'ayah:pause:toggle';
 
 /** Make sure we have a subscriber row for whoever sent this update. */
 async function subscriberFor(ctx: Context) {
   if (!ctx.from) return null;
   return ensureSubscriber(BigInt(ctx.from.id), config.defaultTimezone);
+}
+
+// ─── Shared helpers ─────────────────────────────────────────────────
+
+/** The settings summary for a subscriber, enriched with their current
+ *  position (surah + ayah) and order, both fetched from the track. */
+async function settingsText(sub: Subscriber): Promise<string> {
+  const progress = await getProgressView(sub);
+  return settingsSummary({
+    ...sub,
+    position: progress
+      ? { surahNameAr: progress.surahNameAr, numberInSurah: progress.numberInSurah }
+      : undefined,
+    orderKey: progress?.orderKey,
+  });
+}
+
+/** The small keyboard under /settings: a pause/resume toggle and a shortcut
+ *  to pick the starting surah. */
+function buildSettingsKeyboard(paused: boolean): InlineKeyboard {
+  return new InlineKeyboard()
+    .text(paused ? COPY.resumeBtn : COPY.pauseBtn, PAUSE_TOGGLE)
+    .row()
+    .text(COPY.settingsSurahBtn, ONBOARD_PICK);
+}
+
+/** The onboarding chooser shown to a brand-new subscriber on /start. */
+function buildOnboardingKeyboard(): InlineKeyboard {
+  return new InlineKeyboard()
+    .text(COPY.startDefaultBtn, ONBOARD_DEFAULT)
+    .row()
+    .text(COPY.pickSurahBtn, ONBOARD_PICK)
+    .row()
+    .text(COPY.mushafOrderBtn, ONBOARD_MUSHAF);
+}
+
+/** The order picker: one button per order, labelled in Arabic. */
+function buildOrderKeyboard(): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  for (const order of ORDERS)
+    kb.text(orderSummaryAr(order.key), `${ORDER_PICK_PREFIX}${order.key}`).row();
+  return kb;
+}
+
+/** Move the subscriber to an order (track) AND a starting (surah, ayah) in
+ *  one go. Used by the onboarding buttons. Returns the chosen entry. */
+async function applyOrderStart(
+  subscriberId: number,
+  trackKey: string,
+  surah: number,
+  ayah: number,
+): Promise<EntryWithAyah> {
+  const track = await getTrackByKey(trackKey);
+  const entry = await getEntryForAyah(track.id, surah, ayah);
+  if (!entry) throw new Error(`No entry for ${surah}:${ayah} in track ${trackKey}`);
+  await setOrder(subscriberId, track.id, entry.id);
+  return entry;
+}
+
+/** Flip a subscriber's break state and reply. Shared by /pause and the
+ *  settings toggle button. */
+async function togglePause(ctx: Context, sub: Subscriber): Promise<void> {
+  if (sub.pausedAt) {
+    await resumeSubscriber(sub.id);
+    await ctx.reply(COPY.resumed);
+    // If they have no active days they still get nothing; point at the real blocker.
+    if (activeDaysList(sub.activeDays).length === 0) await ctx.reply(COPY.daysNone);
+  } else {
+    await pauseSubscriber(sub.id);
+    await ctx.reply(COPY.paused);
+  }
 }
 
 /** Admin gate: a private-chat message from the one configured admin id. */
@@ -45,7 +142,14 @@ function isAdmin(ctx: Context): boolean {
 bot.command('start', async (ctx) => {
   const sub = await subscriberFor(ctx);
   if (!sub) return;
-  await ctx.reply(COPY.welcome(settingsSummary(sub)));
+  // Brand-new: never received an ayah and has not chosen a start yet. Offer
+  // the chooser. Every chooser button sets currentEntryId, so the prompt does
+  // not reappear once they have picked (even the "default" button is explicit).
+  if (sub.startedAt === null && sub.currentEntryId === null) {
+    await ctx.reply(COPY.welcomeNew, { reply_markup: buildOnboardingKeyboard() });
+    return;
+  }
+  await ctx.reply(COPY.welcome(await settingsText(sub)));
 });
 
 bot.command('help', (ctx) => ctx.reply(COPY.help));
@@ -53,7 +157,41 @@ bot.command('help', (ctx) => ctx.reply(COPY.help));
 bot.command('settings', async (ctx) => {
   const sub = await subscriberFor(ctx);
   if (!sub) return;
-  await ctx.reply(settingsSummary(sub));
+  await ctx.reply(await settingsText(sub), {
+    reply_markup: buildSettingsKeyboard(sub.pausedAt !== null),
+  });
+});
+
+// /surah: with an argument, set the starting point directly; with none, open
+// the surah picker. The argument is "<surah>" (ayah 1) or "<surah> <ayah>".
+bot.command('surah', async (ctx) => {
+  const sub = await subscriberFor(ctx);
+  if (!sub) return;
+  const arg = commandArg(ctx, 'surah');
+  if (!arg) return void ctx.reply(COPY.surahPrompt, { reply_markup: buildSurahKeyboard(SURAHS) });
+  const parsed = parseSurahArg(arg, ayahCountFor);
+  if (!parsed) return void ctx.reply(COPY.surahInvalid);
+  // Reposition within the subscriber's CURRENT order (track), so /surah does
+  // not silently change their forward/reverse choice.
+  const entry = await getEntryForAyah(sub.trackId, parsed.surah, parsed.ayah);
+  if (!entry) return void ctx.reply(COPY.surahInvalid);
+  await setStartPosition(sub.id, entry.id);
+  await ctx.reply(COPY.startSet(entry.ayah.surah.nameAr, entry.ayah.numberInSurah));
+});
+
+// /order: choose the memorization order (forward Mushaf or reverse hifz).
+bot.command('order', async (ctx) => {
+  const sub = await subscriberFor(ctx);
+  if (!sub) return;
+  await ctx.reply(COPY.orderPrompt, { reply_markup: buildOrderKeyboard() });
+});
+
+// /pause: a single toggle for taking / ending a break. /break and /resume
+// remain as explicit aliases below for anyone who learned them.
+bot.command('pause', async (ctx) => {
+  const sub = await subscriberFor(ctx);
+  if (!sub) return;
+  await togglePause(ctx, sub);
 });
 
 // /today: show the current ayah without sending the daily push or moving
@@ -197,6 +335,104 @@ bot.callbackQuery(new RegExp(`^${TZ_PICK_PREFIX}(\\d+)$`), async (ctx) => {
   await ctx.answerCallbackQuery();
 });
 
+// ─── Onboarding-chooser buttons ─────────────────────────────────────
+
+// "Start from An-Nas (default)": set the reverse order, position 0 (An-Nas).
+bot.callbackQuery(ONBOARD_DEFAULT, async (ctx) => {
+  const sub = await subscriberFor(ctx);
+  if (!sub) return void ctx.answerCallbackQuery();
+  const entry = await applyOrderStart(sub.id, KIDS_TRACK.key, 114, 1);
+  await ctx.editMessageReplyMarkup(); // remove the keyboard
+  await ctx.reply(COPY.startSet(entry.ayah.surah.nameAr, entry.ayah.numberInSurah));
+  await ctx.answerCallbackQuery();
+});
+
+// "Pick a starting surah": open the surah picker in place. Also reached from
+// the /settings shortcut button.
+bot.callbackQuery(ONBOARD_PICK, async (ctx) => {
+  await ctx.editMessageText(COPY.surahPrompt, { reply_markup: buildSurahKeyboard(SURAHS) });
+  await ctx.answerCallbackQuery();
+});
+
+// "Mushaf order": switch to forward order (starting at Al-Fatihah) and then
+// offer the surah picker, so they can still choose where in that order to begin.
+bot.callbackQuery(ONBOARD_MUSHAF, async (ctx) => {
+  const sub = await subscriberFor(ctx);
+  if (!sub) return void ctx.answerCallbackQuery();
+  await applyOrderStart(sub.id, MUSHAF_TRACK.key, 1, 1);
+  await ctx.editMessageText(`${COPY.orderSet(MUSHAF_TRACK.key)}\n\n${COPY.surahPrompt}`, {
+    reply_markup: buildSurahKeyboard(SURAHS),
+  });
+  await ctx.answerCallbackQuery();
+});
+
+// ─── Surah-picker buttons ───────────────────────────────────────────
+
+// Page navigation: redraw the keyboard at the requested page.
+bot.callbackQuery(new RegExp(`^${SURAH_PAGE_PREFIX}(\\d+)$`), async (ctx) => {
+  const page = Number(ctx.match![1]);
+  await ctx.editMessageReplyMarkup({ reply_markup: buildSurahKeyboard(SURAHS, page) });
+  await ctx.answerCallbackQuery();
+});
+
+// The page indicator does nothing but acknowledge the tap.
+bot.callbackQuery(SURAH_NOOP, (ctx) => ctx.answerCallbackQuery());
+
+// Pick a surah: start at that surah, ayah 1, in the subscriber's current order.
+bot.callbackQuery(new RegExp(`^${SURAH_PICK_PREFIX}(\\d+)$`), async (ctx) => {
+  const sub = await subscriberFor(ctx);
+  if (!sub) return void ctx.answerCallbackQuery();
+  const surah = Number(ctx.match![1]);
+  const entry = await getEntryForAyah(sub.trackId, surah, 1);
+  if (!entry) return void ctx.answerCallbackQuery();
+  await setStartPosition(sub.id, entry.id);
+  await ctx.editMessageReplyMarkup(); // remove the keyboard
+  await ctx.reply(COPY.startSet(entry.ayah.surah.nameAr, entry.ayah.numberInSurah));
+  await ctx.answerCallbackQuery();
+});
+
+// ─── Order-picker buttons ───────────────────────────────────────────
+
+bot.callbackQuery(new RegExp(`^${ORDER_PICK_PREFIX}(.+)$`), async (ctx) => {
+  const sub = await subscriberFor(ctx);
+  if (!sub) return void ctx.answerCallbackQuery();
+  const key = ctx.match![1];
+  if (!ORDERS.some((o) => o.key === key)) return void ctx.answerCallbackQuery();
+  const track = await getTrackByKey(key);
+  if (track.id === sub.trackId) {
+    await ctx.editMessageReplyMarkup(); // remove the keyboard
+    await ctx.reply(COPY.orderUnchanged(key));
+    return void ctx.answerCallbackQuery();
+  }
+  // Carry their place across: find the same (surah, ayah) in the new track.
+  // A not-yet-started subscriber (no current entry) keeps null so their first
+  // send begins at the new order's position 0.
+  let newEntryId: number | null = null;
+  if (sub.currentEntryId !== null) {
+    const progress = await getProgressView(sub);
+    if (progress) {
+      const entry = await getEntryForAyah(track.id, progress.surahNumber, progress.numberInSurah);
+      newEntryId = entry?.id ?? null;
+    }
+  }
+  await setOrder(sub.id, track.id, newEntryId);
+  await ctx.editMessageReplyMarkup(); // remove the keyboard
+  await ctx.reply(COPY.orderSet(key));
+  await ctx.answerCallbackQuery();
+});
+
+// ─── Settings pause/resume toggle ───────────────────────────────────
+
+bot.callbackQuery(PAUSE_TOGGLE, async (ctx) => {
+  const sub = await subscriberFor(ctx);
+  if (!sub) return void ctx.answerCallbackQuery();
+  await togglePause(ctx, sub);
+  // Redraw the toggle to reflect the flipped state (was paused -> now active).
+  const nowPaused = sub.pausedAt === null;
+  await ctx.editMessageReplyMarkup({ reply_markup: buildSettingsKeyboard(nowPaused) });
+  await ctx.answerCallbackQuery();
+});
+
 // ─── Admin commands ─────────────────────────────────────────────────
 
 bot.command('admin_health', async (ctx) => {
@@ -234,14 +470,18 @@ bot.catch((err) => {
 });
 
 async function setBotCommands() {
+  // The visible menu stays small. /break and /resume still work as aliases
+  // (the /pause toggle replaces them in the menu), and the picker buttons
+  // cover the rest, matching the "fewer commands" goal.
   await bot.api.setMyCommands([
     { command: 'today', description: 'عرض آية اليوم' },
+    { command: 'surah', description: 'اختيار سورة البداية' },
+    { command: 'order', description: 'اختيار الترتيب (المصحف أو الحفظ)' },
     { command: 'time', description: 'ضبط وقت الإرسال' },
     { command: 'days', description: 'اختيار أيام الإرسال' },
     { command: 'review', description: 'عدد آيات المراجعة' },
     { command: 'timezone', description: 'ضبط المنطقة الزمنية' },
-    { command: 'break', description: 'أخذ راحة' },
-    { command: 'resume', description: 'العودة من الراحة' },
+    { command: 'pause', description: 'أخذ راحة أو العودة منها' },
     { command: 'settings', description: 'عرض إعداداتك' },
     { command: 'help', description: 'المساعدة' },
   ]);

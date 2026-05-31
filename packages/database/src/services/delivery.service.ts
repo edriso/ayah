@@ -1,6 +1,11 @@
 import { prisma } from '../client';
 import { advancePosition } from '@ayah/core';
-import { getEntryAtPosition, getEntryById, type EntryWithAyah } from './quran.service';
+import {
+  getEntryAtPosition,
+  getEntryById,
+  getTrackById,
+  type EntryWithAyah,
+} from './quran.service';
 
 // A subscriber row joined with its track (we need track.loops and the entry
 // counts to walk the curriculum).
@@ -52,6 +57,34 @@ export async function resolveTargetEntry(subscriber: {
     return getEntryAtPosition(subscriber.trackId, 0);
   }
   return null;
+}
+
+/**
+ * Where a subscriber stands right now, for display in /settings: the surah
+ * and ayah they are ON (or would start at, if not yet started) plus their
+ * order (the track key). Reuses resolveTargetEntry so "not started yet" shows
+ * the default first ayah rather than nothing. Null only if a non-looping
+ * track is finished (the shipped tracks both loop, so in practice never).
+ */
+export async function getProgressView(subscriber: {
+  trackId: number;
+  currentEntryId: number | null;
+  startedAt: Date | null;
+}): Promise<{
+  surahNumber: number;
+  numberInSurah: number;
+  surahNameAr: string;
+  orderKey: string;
+} | null> {
+  const entry = await resolveTargetEntry(subscriber);
+  if (!entry) return null;
+  const track = await getTrackById(subscriber.trackId);
+  return {
+    surahNumber: entry.ayah.surah.number,
+    numberInSurah: entry.ayah.numberInSurah,
+    surahNameAr: entry.ayah.surah.nameAr,
+    orderKey: track?.key ?? '',
+  };
 }
 
 export type CommitResult = 'sent' | 'duplicate';

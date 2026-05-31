@@ -7,7 +7,9 @@ purpose. The aim is that a junior developer can read this and be productive.
 
 Ayah is a Telegram bot that sends one Quran ayah a day to each subscriber,
 with the previous ayat of the same surah for review (a per-user count, 0-20,
-default 10). It is a pnpm workspace:
+default 10). Each subscriber chooses where to begin (surah + ayah) and in
+which order to memorize: the reverse hifz order (from An-Nas, the default) or
+the forward Mushaf order (from Al-Fatihah). It is a pnpm workspace:
 
 - `packages/core` pure logic, no database, no network. Fully unit-tested.
 - `packages/database` Prisma schema, the client, and services.
@@ -28,6 +30,14 @@ Read `docs/ERD.md` and `docs/DATABASE.md` before changing data or the schema.
    must retry the same ayah, never skip it.
 5. One ayah per subscriber per local day. The `unique(subscriberId,
    scheduledFor)` index on `DeliveryLog` is the lock. Do not work around it.
+6. A track is the whole Quran in one order, every ayah present. There are two:
+   `kids-hifz` (reverse, from An-Nas — the default) and `mushaf` (forward,
+   from Al-Fatihah). Both are seeded data, not code. Choosing a STARTING POINT
+   is just pointing `Subscriber.currentEntryId` at the matching `TrackEntry`
+   (see `setStartPosition`); choosing an ORDER is moving the subscriber to the
+   other track and re-pointing `currentEntryId` at the same (surah, ayah)
+   there (see `setOrder`). Adding another order is a new `Track` + `db:seed`,
+   no migration.
 
 ## How the daily send works
 

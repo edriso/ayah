@@ -1,16 +1,23 @@
-// The kids' memorization track, defined as reviewable data.
+// The memorization tracks, defined as reviewable data.
 //
-// The recommended children's order starts with Juz Amma (the short surahs
-// at the end) and works backward, then Juz Tabarak, then the rest of the
-// Quran toward the beginning. Because Juz Amma is surahs 78-114 and Juz
-// Tabarak is 67-77, "start at the end and go backward" is exactly the same
-// as walking the surahs from 114 down to 1. Within each surah you memorize
-// ayah 1, 2, 3 ... in order.
+// A track is just an ordered list of every ayah; a subscriber walks it one
+// ayah a day. Within EITHER track the ayat of a surah are always ascending
+// (1, 2, 3 ...). The two tracks differ only in the order they visit surahs:
 //
-// So the whole track is: surah 114 (An-Nas) first, then 113, 112, ... down
-// to surah 1 (Al-Fatihah); and inside each surah, ayat in ascending order.
-// Keeping this as a small pure function (instead of a hand-written list of
-// 6236 rows) means it is easy to read, test, and adjust later.
+//   - kids-hifz (reverse): surah 114 (An-Nas) first, then 113 ... down to 1
+//     (Al-Fatihah). This is the recommended children's order: start with Juz
+//     Amma (the short surahs at the end) and work backward through Juz
+//     Tabarak and on toward the beginning. Because Juz Amma is 78-114 and Juz
+//     Tabarak is 67-77, "start at the end and go backward" is exactly walking
+//     the surahs from 114 down to 1. This is the default for new subscribers.
+//
+//   - mushaf (forward): surah 1 (Al-Fatihah) first, then 2, 3 ... up to 114
+//     (An-Nas). The normal Mushaf reading order, for people who prefer it.
+//
+// Keeping these as small pure functions (instead of hand-written lists of
+// 6236 rows) means they are easy to read, test, and adjust later. The seed
+// turns each into TrackEntry rows; the app moves a subscriber between tracks
+// to change their order (see setOrder in subscriber.service).
 
 export const KIDS_TRACK = {
   key: 'kids-hifz',
@@ -18,13 +25,39 @@ export const KIDS_TRACK = {
   loops: true,
 } as const;
 
+export const MUSHAF_TRACK = {
+  key: 'mushaf',
+  name: 'ترتيب المصحف (من الفاتحة إلى الناس)',
+  loops: true,
+} as const;
+
+/**
+ * The orders a subscriber can choose between. The app reads this so it never
+ * hard-codes a track key, and the surah each one starts at (position 0) is
+ * handy for copy. The Arabic labels live in the telegram app's copy.ts (all
+ * user-facing wording is kept there), keyed by `key`.
+ */
+export const ORDERS = [
+  { key: KIDS_TRACK.key, startSurah: 114 },
+  { key: MUSHAF_TRACK.key, startSurah: 1 },
+] as const;
+
+/** A track key the bot knows how to offer. */
+export type OrderKey = (typeof ORDERS)[number]['key'];
+
+/** Look up the order descriptor for a track key, or undefined if unknown. */
+export function orderForKey(key: string) {
+  return ORDERS.find((o) => o.key === key);
+}
+
 export interface CurriculumStep {
   surahNumber: number;
   numberInSurah: number;
 }
 
 /**
- * Build the ordered list of (surah, ayah) steps for the kids' track.
+ * Build the ordered list of (surah, ayah) steps for the kids' (reverse)
+ * track: surahs 114 down to 1, ayat ascending within each.
  *
  * @param ayahCountFor returns how many ayat a surah has. Passing this in
  *   (instead of importing the table) lets the seed use the real counts from
@@ -33,6 +66,22 @@ export interface CurriculumStep {
 export function buildKidsOrder(ayahCountFor: (surahNumber: number) => number): CurriculumStep[] {
   const steps: CurriculumStep[] = [];
   for (let surahNumber = 114; surahNumber >= 1; surahNumber--) {
+    const count = ayahCountFor(surahNumber);
+    for (let numberInSurah = 1; numberInSurah <= count; numberInSurah++) {
+      steps.push({ surahNumber, numberInSurah });
+    }
+  }
+  return steps;
+}
+
+/**
+ * Build the ordered list of (surah, ayah) steps for the Mushaf (forward)
+ * track: surahs 1 up to 114, ayat ascending within each. Same shape as
+ * buildKidsOrder, only the surah direction is flipped.
+ */
+export function buildMushafOrder(ayahCountFor: (surahNumber: number) => number): CurriculumStep[] {
+  const steps: CurriculumStep[] = [];
+  for (let surahNumber = 1; surahNumber <= 114; surahNumber++) {
     const count = ayahCountFor(surahNumber);
     for (let numberInSurah = 1; numberInSurah <= count; numberInSurah++) {
       steps.push({ surahNumber, numberInSurah });

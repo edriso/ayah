@@ -2,7 +2,7 @@ import { config } from './config';
 import { bot, setBotCommands } from './bot';
 import { startScheduler, stopScheduler, runDeliveryOnce } from './scheduler';
 import { startHealthServer } from './health';
-import { prisma, assertQuranSeeded } from '@ayah/database';
+import { prisma, assertQuranSeeded, assertTracksSeeded } from '@ayah/database';
 import { logger } from './lib/logger';
 
 // Short tail before a fatal exit so the last log line reaches stdout.
@@ -51,6 +51,9 @@ async function main() {
   // fully seeded. Better to fail at boot than to send a broken ayah.
   await waitForDatabase();
   await assertQuranSeeded();
+  // Every order the bot offers must be a fully-seeded track, else picking it
+  // would fail at runtime. Fail at boot instead. Run "pnpm db:seed" to fix.
+  await assertTracksSeeded();
 
   startHealthServer();
   await setBotCommands();

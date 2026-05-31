@@ -1,6 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { ALL_DAYS, NO_DAYS, maskFromDays } from '@ayah/core';
-import { reviewSummaryAr, settingsSummary, daysSummaryAr, formatTimeAr } from './copy';
+import {
+  reviewSummaryAr,
+  settingsSummary,
+  daysSummaryAr,
+  formatTimeAr,
+  orderSummaryAr,
+  positionSummaryAr,
+} from './copy';
 
 describe('formatTimeAr', () => {
   it('pads to two digits and uses Arabic-Indic digits', () => {
@@ -51,5 +58,34 @@ describe('settingsSummary status line', () => {
 
   it('shows the break state when paused', () => {
     expect(settingsSummary({ ...base, pausedAt: new Date() })).toContain('وضع الراحة');
+  });
+
+  it('omits the position and order lines when they are not provided', () => {
+    const summary = settingsSummary(base);
+    expect(summary).not.toContain('الموضع');
+    expect(summary).not.toContain('الترتيب');
+  });
+
+  it('shows the current position and order when provided', () => {
+    const summary = settingsSummary({
+      ...base,
+      position: { surahNameAr: 'الملك', numberInSurah: 5 },
+      orderKey: 'mushaf',
+    });
+    expect(summary).toContain('• الموضع: سورة الملك — آية ٥');
+    expect(summary).toContain('• الترتيب: ترتيب المصحف (من الفاتحة)');
+  });
+});
+
+describe('orderSummaryAr / positionSummaryAr', () => {
+  it('labels the two known orders and falls back to the raw key', () => {
+    expect(orderSummaryAr('kids-hifz')).toContain('من الناس');
+    expect(orderSummaryAr('mushaf')).toContain('من الفاتحة');
+    expect(orderSummaryAr('unknown')).toBe('unknown');
+  });
+
+  it('renders a position with Arabic-Indic digits', () => {
+    expect(positionSummaryAr('الفاتحة', 1)).toBe('سورة الفاتحة — آية ١');
+    expect(positionSummaryAr('البقرة', 25)).toBe('سورة البقرة — آية ٢٥');
   });
 });

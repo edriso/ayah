@@ -33,14 +33,22 @@ query are all reused.
 
 ## More tracks
 
-The schema already supports many tracks. Examples:
+The schema supports many tracks, and two now ship: `kids-hifz` (reverse, from
+An-Nas — the default) and `mushaf` (forward, from Al-Fatihah). A subscriber
+picks between them with `/order`, and picks a starting surah/ayah with
+`/surah`; see `ORDERS` and `buildMushafOrder` in
+`packages/database/src/reference/curriculum.ts` and `setOrder` /
+`setStartPosition` in the subscriber service.
+
+Still possible with no schema change, only new seeded rows:
 
 - a juz-only track (one juz at a time),
-- an adults track in normal order (Al-Fatihah first),
 - a track that follows a specific school or teacher's plan.
 
-Each track is just rows in `Track` and `TrackEntry`, reviewed by a teacher
-and seeded from a file. No code change is needed to add one.
+Each new track is just rows in `Track` and `TrackEntry` built from an order
+function and added by re-running `pnpm db:seed` (idempotent, per-track). No
+migration is needed. The startup check (`assertTracksSeeded`) refuses to boot
+until every order listed in `ORDERS` is fully seeded.
 
 ## Streaks and gentle reminders
 

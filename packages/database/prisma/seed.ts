@@ -16,7 +16,13 @@ import { fileURLToPath } from 'node:url';
 import { prisma } from '../src/client';
 import { SURAHS } from '../src/reference/surahs';
 import { AYAH_COUNTS, TOTAL_AYAT } from '../src/reference/ayah-counts';
-import { KIDS_TRACK, buildKidsOrder } from '../src/reference/curriculum';
+import {
+  KIDS_TRACK,
+  MUSHAF_TRACK,
+  buildKidsOrder,
+  buildMushafOrder,
+  type CurriculumStep,
+} from '../src/reference/curriculum';
 
 loadEnv();
 
@@ -28,23 +34,54 @@ interface QuranData {
   surahs: { number: number; ayat: string[] }[];
 }
 
+// The tracks to seed, each with the function that builds its ayah order.
+// Adding a new order later is just one more line here plus its builder.
+const TRACKS = [
+  { def: KIDS_TRACK, build: buildKidsOrder },
+  { def: MUSHAF_TRACK, build: buildMushafOrder },
+] as const;
+
 async function main() {
   const data = loadData();
   verify(data);
 
-  // Idempotency guard: if the text is already in place, do nothing.
+  // Step 1: the holy text. Seed it once; skip if it is already fully in
+  // place, but DO NOT return early — tracks are seeded below and a track may
+  // be new even when the text is not (e.g. adding the Mushaf track to an
+  // existing deployment). A partial text is a hard error.
   const existingAyat = await prisma.ayah.count();
   if (existingAyat === TOTAL_AYAT) {
-    console.log('Quran text already seeded (6236 ayat). Nothing to do.');
-    return;
-  }
-  if (existingAyat > 0) {
+    console.log('Quran text already seeded (6236 ayat). Skipping text.');
+  } else if (existingAyat > 0) {
     throw new Error(
       `Found ${existingAyat} ayat (expected 0 or ${TOTAL_AYAT}). The database is half-seeded. ` +
         `Run "pnpm db:reset" to wipe and reseed.`,
     );
+  } else {
+    await seedText(data);
   }
 
+  // Step 2: the ayah lookup, used to turn each (surah, ayah) step into an id.
+  console.log('Building the ayah lookup...');
+  const ayahIdByKey = new Map<string, number>();
+  const allAyat = await prisma.ayah.findMany({
+    select: { id: true, surahNumber: true, numberInSurah: true },
+  });
+  for (const a of allAyat) ayahIdByKey.set(`${a.surahNumber}:${a.numberInSurah}`, a.id);
+
+  // Step 3: each track. Per-track idempotent: the track row is upserted and
+  // its entries are created only when they are missing, so this is safe to
+  // run repeatedly and adds a brand-new track to an already-seeded database.
+  const ayahCountFor = (surah: number) => data.surahs[surah - 1].ayat.length;
+  for (const { def, build } of TRACKS) {
+    await ensureTrack(def, build(ayahCountFor), ayahIdByKey);
+  }
+
+  console.log('\nDone. All tracks seeded.');
+}
+
+/** Insert the 114 surah rows and all 6236 ayah rows from the verified data. */
+async function seedText(data: QuranData): Promise<void> {
   console.log('Seeding surahs...');
   for (const meta of SURAHS) {
     const ayahCount = data.surahs[meta.number - 1].ayat.length;
@@ -68,37 +105,44 @@ async function main() {
     })),
   );
   await createManyChunked('ayat', ayahRows, (chunk) => prisma.ayah.createMany({ data: chunk }));
+}
 
-  console.log('Building the ayah lookup...');
-  const ayahIdByKey = new Map<string, number>();
-  const allAyat = await prisma.ayah.findMany({
-    select: { id: true, surahNumber: true, numberInSurah: true },
-  });
-  for (const a of allAyat) ayahIdByKey.set(`${a.surahNumber}:${a.numberInSurah}`, a.id);
-
-  console.log('Creating the kids track...');
+/**
+ * Make sure one track exists with all its entries. Upserts the Track row,
+ * then — only if its entries are not already complete — creates them from the
+ * given order. Idempotent: a fully-seeded track is left untouched.
+ */
+async function ensureTrack(
+  def: { key: string; name: string; loops: boolean },
+  order: CurriculumStep[],
+  ayahIdByKey: Map<string, number>,
+): Promise<void> {
   const track = await prisma.track.upsert({
-    where: { key: KIDS_TRACK.key },
-    update: { name: KIDS_TRACK.name, loops: KIDS_TRACK.loops },
-    create: { key: KIDS_TRACK.key, name: KIDS_TRACK.name, loops: KIDS_TRACK.loops },
+    where: { key: def.key },
+    update: { name: def.name, loops: def.loops },
+    create: { key: def.key, name: def.name, loops: def.loops },
   });
 
-  console.log('Seeding track entries (the memorization order)...');
-  const order = buildKidsOrder((surah) => data.surahs[surah - 1].ayat.length);
+  const have = await prisma.trackEntry.count({ where: { trackId: track.id } });
+  if (have === order.length) {
+    console.log(`Track "${def.key}" already has all ${have} entries. Skipping.`);
+    return;
+  }
+  if (have > 0) {
+    throw new Error(
+      `Track "${def.key}" has ${have} entries (expected 0 or ${order.length}). ` +
+        `It is half-seeded; clear track_entries for this track and reseed.`,
+    );
+  }
+
+  console.log(`Seeding entries for track "${def.key}"...`);
   const entryRows = order.map((step, position) => {
     const ayahId = ayahIdByKey.get(`${step.surahNumber}:${step.numberInSurah}`);
-    if (!ayahId) {
-      throw new Error(`No ayah row for ${step.surahNumber}:${step.numberInSurah}`);
-    }
+    if (!ayahId) throw new Error(`No ayah row for ${step.surahNumber}:${step.numberInSurah}`);
     return { trackId: track.id, position, ayahId };
   });
-  await createManyChunked('track_entries', entryRows, (chunk) =>
+  await createManyChunked(`${def.key} entries`, entryRows, (chunk) =>
     prisma.trackEntry.createMany({ data: chunk }),
-  );
-
-  console.log(
-    `\nDone. Seeded ${ayahRows.length} ayat and ${entryRows.length} track entries ` +
-      `for track "${KIDS_TRACK.key}".`,
   );
 }
 

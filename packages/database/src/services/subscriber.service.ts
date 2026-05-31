@@ -52,6 +52,33 @@ export async function ensureSubscriber(telegramId: bigint, timezone?: string) {
   }
 }
 
+/**
+ * Move a subscriber to a chosen starting point by pointing currentEntryId at
+ * a specific track entry (their track/order is unchanged). The entry must
+ * belong to the subscriber's current track; the caller looks it up with
+ * getEntryForAyah. From here the subscriber walks forward from this entry.
+ */
+export function setStartPosition(subscriberId: number, entryId: number) {
+  return prisma.subscriber.update({
+    where: { id: subscriberId },
+    data: { currentEntryId: entryId },
+  });
+}
+
+/**
+ * Switch a subscriber's order by moving them to another track.
+ *   - currentEntryId is the matching entry in the NEW track (so changing
+ *     order keeps their place within the current surah), or null to let the
+ *     first send start at the new track's position 0 (a not-yet-started
+ *     subscriber). The caller resolves it with getEntryForAyah.
+ */
+export function setOrder(subscriberId: number, trackId: number, currentEntryId: number | null) {
+  return prisma.subscriber.update({
+    where: { id: subscriberId },
+    data: { trackId, currentEntryId },
+  });
+}
+
 /** Update which weekdays a subscriber receives ayat on (a 7-bit mask). */
 export function setActiveDays(subscriberId: number, activeDays: number) {
   return prisma.subscriber.update({

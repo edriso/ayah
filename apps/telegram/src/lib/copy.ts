@@ -47,6 +47,21 @@ export function reviewSummaryAr(reviewCount: number): string {
   return `${toArabicDigits(reviewCount)} آية سابقة`;
 }
 
+/** Short Arabic label for an order (track key), used in settings and buttons. */
+const ORDER_LABEL_AR: Record<string, string> = {
+  'kids-hifz': 'منهج الحفظ (من الناس)',
+  mushaf: 'ترتيب المصحف (من الفاتحة)',
+};
+
+export function orderSummaryAr(orderKey: string): string {
+  return ORDER_LABEL_AR[orderKey] ?? orderKey;
+}
+
+/** "سورة الملك — آية ٥": where the subscriber stands (or starts) now. */
+export function positionSummaryAr(surahNameAr: string, numberInSurah: number): string {
+  return `سورة ${surahNameAr} — آية ${toArabicDigits(numberInSurah)}`;
+}
+
 export interface SettingsView {
   deliveryHour: number;
   deliveryMinute: number;
@@ -54,6 +69,11 @@ export interface SettingsView {
   reviewCount: number;
   timezone: string;
   pausedAt: Date | null;
+  // Where the subscriber stands now and in which order. Optional so pure
+  // tests (and any caller without the joined entry) can omit them; when
+  // absent the two lines are simply left out.
+  position?: { surahNameAr: string; numberInSurah: number };
+  orderKey?: string;
 }
 
 export function settingsSummary(s: SettingsView): string {
@@ -64,45 +84,87 @@ export function settingsSummary(s: SettingsView): string {
   else if (activeDaysList(s.activeDays).length === 0) status = 'لن تصلك آيات (لم تختر أي يوم) ⚠️';
   else status = 'يعمل ✅';
 
-  return [
+  const lines = [
     'إعداداتك الحالية:',
     `• الحالة: ${status}`,
     `• وقت الإرسال: ${formatTimeAr(s.deliveryHour, s.deliveryMinute)}`,
     `• الأيام: ${daysSummaryAr(s.activeDays)}`,
     `• المراجعة: ${reviewSummaryAr(s.reviewCount)}`,
     `• المنطقة الزمنية: ${s.timezone}`,
-  ].join('\n');
+  ];
+  if (s.position) {
+    lines.push(`• الموضع: ${positionSummaryAr(s.position.surahNameAr, s.position.numberInSurah)}`);
+  }
+  if (s.orderKey) lines.push(`• الترتيب: ${orderSummaryAr(s.orderKey)}`);
+  return lines.join('\n');
 }
 
 export const COPY = {
+  // Shown to a returning user (one who has already started). The starting
+  // point is no longer hard-coded here — it is a choice shown in /settings.
   welcome: (settings: string) =>
     [
       'السلام عليكم ورحمة الله 🌿',
       '',
-      'مرحبًا بك في بوت "آية". أنت الآن مسجَّل، وستتقدّم آية واحدة كل يوم بإذن الله، نبدأ من سورة الناس ونمضي إلى الفاتحة.',
+      'مرحبًا بعودتك إلى بوت "آية". تصلك آية واحدة كل يوم بإذن الله، مع آيات سابقة من السورة نفسها للمراجعة.',
       '',
-      'ستصلك أول آية في وقت الإرسال المحدّد أدناه، أو الآن مباشرة إن كان وقتها قد حان اليوم.',
       '👈 لرؤية آيتك الآن اضغط /today',
       '',
       settings,
       '',
-      'إن وصلتك الآية في وقت غير متوقَّع فقد تختلف منطقتك الزمنية، اضبطها عبر /timezone.',
-      'ولعرض كل الأوامر اكتب /help',
+      'لتغيير سورة البداية اكتب /surah، ولتغيير الترتيب اكتب /order، ولعرض كل الأوامر اكتب /help.',
     ].join('\n'),
+
+  // Shown to a brand-new user, paired with the onboarding keyboard
+  // (start-from-An-Nas / pick a surah / switch to Mushaf order).
+  welcomeNew: [
+    'السلام عليكم ورحمة الله 🌿',
+    '',
+    'مرحبًا بك في بوت "آية". يساعدك على حفظ القرآن بإرسال آية واحدة كل يوم، مع آيات سابقة من السورة نفسها للمراجعة.',
+    '',
+    'من أين تحب أن تبدأ؟ يمكنك البدء بالمنهج الافتراضي (من سورة الناس)، أو اختيار سورة تبدأ بها، أو الحفظ بترتيب المصحف (من الفاتحة).',
+    '',
+    'يمكنك تغيير كل ذلك لاحقًا في أي وقت.',
+  ].join('\n'),
 
   help: [
     'بوت "آية" يساعدك على حفظ القرآن بإرسال آية واحدة كل يوم مع آيات سابقة للمراجعة.',
     '',
     'الأوامر:',
     '/today — عرض آية اليوم الآن (بدون تغيير موضعك)',
+    '/surah — اختيار سورة البداية، أو /surah رقم_السورة رقم_الآية مثال: /surah 67 5',
+    '/order — اختيار الترتيب: منهج الحفظ (من الناس) أو ترتيب المصحف (من الفاتحة)',
     '/time HH:MM — ضبط وقت الإرسال، مثال: /time 07:00',
     '/days — اختيار أيام الإرسال',
     '/review N — عدد آيات المراجعة (من ٠ إلى ٢٠)، مثال: /review 5',
     '/timezone — ضبط المنطقة الزمنية، مثال: /timezone Africa/Cairo',
-    '/break — أخذ راحة، يتوقف الإرسال ويبقى موضعك محفوظًا',
-    '/resume — العودة من الراحة من حيث توقفت',
+    '/pause — أخذ راحة أو العودة منها (يبقى موضعك محفوظًا)',
     '/settings — عرض إعداداتك الحالية',
   ].join('\n'),
+
+  // Onboarding keyboard button labels.
+  startDefaultBtn: 'ابدأ من سورة الناس (الافتراضي)',
+  pickSurahBtn: '📖 اختر سورة البداية',
+  mushafOrderBtn: '🔀 ترتيب المصحف (من الفاتحة)',
+
+  // Surah / start-point copy.
+  surahPrompt:
+    'اختر السورة التي تريد أن تبدأ بها الحفظ:\nأو اكتب: /surah رقم_السورة رقم_الآية (مثال: /surah 67 5)',
+  surahInvalid:
+    'تعذّر فهم ذلك. اكتب رقم السورة (١ إلى ١١٤)، ويمكنك إضافة رقم الآية بعده.\nمثال: /surah 67 5',
+  startSet: (surahNameAr: string, numberInSurah: number) =>
+    `تم ✅ ستبدأ من ${positionSummaryAr(surahNameAr, numberInSurah)}.\n` +
+    'لرؤيتها الآن اضغط /today. لتبدأ من آية معيّنة اكتب: /surah رقم_السورة رقم_الآية',
+
+  // Order copy.
+  orderPrompt: 'اختر ترتيب الحفظ:',
+  orderUnchanged: (orderKey: string) => `أنت تتبع ${orderSummaryAr(orderKey)} بالفعل ✅`,
+  orderSet: (orderKey: string) => `تم ضبط الترتيب على ${orderSummaryAr(orderKey)} ✅`,
+
+  // Settings keyboard button labels.
+  pauseBtn: '⏸️ أخذ راحة',
+  resumeBtn: '▶️ العودة من الراحة',
+  settingsSurahBtn: '📖 سورة البداية',
 
   brokenOrNotStarted: 'لم نتمكن من تجهيز آية لك الآن، حاول لاحقًا بإذن الله.',
 

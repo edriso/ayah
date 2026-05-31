@@ -17,13 +17,18 @@ small `/health` endpoint for uptime checks.
 pnpm install --prod=false
 pnpm data:fetch          # writes the frozen Quran data file (skip if cloned)
 pnpm db:deploy           # applies the migrations (creates the tables)
-pnpm db:seed             # fills the Quran tables and the kids track
+pnpm db:seed             # fills the Quran tables and BOTH order tracks
 pnpm start               # runs apps/telegram
 ```
 
 `db:deploy` and `db:seed` are setup steps. Run them once per environment when
-you first deploy and again only after a new migration. The bot refuses to
-start until the text is seeded, so you cannot forget.
+you first deploy, and again after a new migration **or when a new track/order
+is added**. The bot refuses to start until the text and every offered order
+are seeded, so you cannot forget.
+
+`db:seed` is idempotent and per-track: it skips work already done and only
+fills in what is missing. So adding a new order (a new `Track`) ships by
+re-running `pnpm db:seed` — no migration is needed, because tracks are data.
 
 Set these env vars on the host (see the single root `.env.example`):
 
@@ -75,8 +80,11 @@ makes sure a restart never double-sends.
 git pull
 pnpm install
 pnpm db:deploy     # apply any new migrations
+pnpm db:seed       # only if the release notes mention a new order/track
 pnpm start
 ```
 
-You do not need to re-run `data:fetch` or `db:seed` on a normal update. The
-Quran data does not change.
+You do not need to re-run `data:fetch` on a normal update (the Quran data does
+not change). Re-run `db:seed` only when a release adds a new order/track; it is
+idempotent, so running it when nothing is new is a harmless no-op. The release
+that added the Mushaf (forward) order needs one `pnpm db:seed`.

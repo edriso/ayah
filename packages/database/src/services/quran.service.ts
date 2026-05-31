@@ -1,6 +1,7 @@
 import { prisma } from '../client';
 import { reviewRange, surahUsesBasmala, type DailyMessageInput } from '@ayah/core';
 import { TOTAL_AYAT } from '../reference/ayah-counts';
+import { ORDERS } from '../reference/curriculum';
 
 /**
  * Make sure the holy text is fully seeded before the bot serves anyone.
@@ -17,11 +18,35 @@ export async function assertQuranSeeded(): Promise<void> {
   }
 }
 
+/**
+ * Make sure every order the bot offers is fully seeded as a track with all
+ * 6236 entries. Called once at startup so a deploy that forgot to reseed
+ * (e.g. after adding the Mushaf track) fails loudly at boot instead of when a
+ * user first picks that order. Run "pnpm db:seed" to fix it.
+ */
+export async function assertTracksSeeded(): Promise<void> {
+  for (const order of ORDERS) {
+    const track = await prisma.track.findUnique({ where: { key: order.key } });
+    const entries = track ? await prisma.trackEntry.count({ where: { trackId: track.id } }) : 0;
+    if (!track || entries !== TOTAL_AYAT) {
+      throw new Error(
+        `Track "${order.key}" is not fully seeded (found ${entries} of ${TOTAL_AYAT} entries). ` +
+          `Run "pnpm db:seed".`,
+      );
+    }
+  }
+}
+
 /** Load a track by its stable key (e.g. "kids-hifz"). */
 export async function getTrackByKey(key: string) {
   const track = await prisma.track.findUnique({ where: { key } });
   if (!track) throw new Error(`Track "${key}" not found. Did you run the seed?`);
   return track;
+}
+
+/** Load a track by its numeric id, or null if it does not exist. */
+export function getTrackById(id: number) {
+  return prisma.track.findUnique({ where: { id } });
 }
 
 /** How many entries (ayat) a track has in total. */
@@ -47,6 +72,24 @@ export function getEntryAtPosition(trackId: number, position: number) {
 export function getEntryById(entryId: number) {
   return prisma.trackEntry.findUnique({
     where: { id: entryId },
+    include: entryInclude,
+  });
+}
+
+/**
+ * The track entry for a given (surah, ayah) within a track, or null if that
+ * ayah does not exist. Used to reposition a subscriber to a chosen starting
+ * point, and to map their current ayah onto another track when switching
+ * order. Goes ayah -> entry via the unique (trackId, ayahId) index.
+ */
+export async function getEntryForAyah(trackId: number, surahNumber: number, numberInSurah: number) {
+  const ayah = await prisma.ayah.findUnique({
+    where: { surahNumber_numberInSurah: { surahNumber, numberInSurah } },
+    select: { id: true },
+  });
+  if (!ayah) return null;
+  return prisma.trackEntry.findUnique({
+    where: { trackId_ayahId: { trackId, ayahId: ayah.id } },
     include: entryInclude,
   });
 }
