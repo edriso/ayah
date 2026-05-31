@@ -105,7 +105,7 @@ real changes go through a migration so production stays in step.
   value from `pnpm dev` wins over `.env`.
 - Prisma 7 does not read `.env` on its own and does not take the URL in the
   schema. The CLI gets the URL from `prisma.config.ts`; the running bot
-  builds its own client in `src/client.ts`.
+  builds its own client in `src/database/client.ts`.
 - The generated Prisma client lives in `src/database/generated`.
   It is git-ignored. Run `pnpm db:generate` if imports from it fail.
 - `activeDays` is a 7-bit mask (bit 0 = Monday). Use the helpers in

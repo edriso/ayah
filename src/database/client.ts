@@ -23,7 +23,7 @@ function parseDbUrl(raw: string) {
 
 const rawUrl = process.env.DATABASE_URL;
 if (!rawUrl) {
-  throw new Error('DATABASE_URL is not set. Copy packages/database/.env.example to .env.');
+  throw new Error('DATABASE_URL is not set. Copy .env.example to .env.');
 }
 
 const logLevels =

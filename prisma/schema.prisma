@@ -100,11 +100,11 @@ model Subscriber {
   deliveryHour   Int @default(7) @map("delivery_hour") @db.TinyInt
   deliveryMinute Int @default(0) @map("delivery_minute") @db.TinyInt
   // 7-bit mask of the weekdays the subscriber wants ayat on. Bit 0 is
-  // Monday ... bit 6 is Sunday. 127 = every day. See packages/core/days.ts.
+  // Monday ... bit 6 is Sunday. 127 = every day. See src/core/days.ts.
   activeDays     Int @default(127) @map("active_days")
   // How many PREVIOUS ayat of the same surah to include for review, on top of
   // today's new ayah. 0 = just today's ayah. Validated to 0..20 in the app
-  // (MAX_REVIEW_COUNT in packages/core). On long surahs the review is split
+  // (MAX_REVIEW_COUNT in src/core). On long surahs the review is split
   // across several messages so it never exceeds Telegram's size limit.
   reviewCount    Int @default(10) @map("review_count")
 

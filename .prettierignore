@@ -9,7 +9,7 @@ pnpm-lock.yaml
 
 # The frozen Quran data file is produced by `pnpm data:fetch` and must
 # stay byte-for-byte as Tanzil shipped it. Never let a formatter touch it.
-packages/database/prisma/data/quran-uthmani.json
+prisma/data/quran-uthmani.json
 
 # Markdown is hand-aligned (Arabic glyph widths confuse Prettier's table
 # math, and it renders the same on GitHub either way). Leave docs alone.

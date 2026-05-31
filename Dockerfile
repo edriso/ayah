@@ -39,6 +39,11 @@ RUN pnpm install --frozen-lockfile
 # Copy the rest of the source (including the committed Quran data file).
 COPY . .
 
+# Regenerate the Prisma client against the final source tree. The install
+# step above already generates it, but regenerating here makes the image
+# independent of COPY ordering and guarantees it matches the committed schema.
+RUN pnpm db:generate
+
 # This image is the production artifact, so default to production for runtime.
 # An operator can still override it with `-e NODE_ENV=...` if ever needed.
 ENV NODE_ENV=production

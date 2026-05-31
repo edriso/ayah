@@ -26,10 +26,10 @@ a track".
 
 ## A Discord version
 
-The whole point of the `core` and `database` packages is that the brain is
-written once. A Discord app would live in `apps/discord`, use discord.js, and
-call the same services. The daily logic, the track walking, and the review
-query are all reused.
+The whole point of the `src/core` and `src/database` folders is that the brain
+is written once. A Discord version would reuse them (discord.js instead of
+grammY) and call the same services. The daily logic, the track walking, and
+the review query are all reused.
 
 ## More tracks
 

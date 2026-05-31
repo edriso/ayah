@@ -159,7 +159,7 @@ function verify(ayat: ParsedAyah[]): void {
  * This Tanzil Uthmani edition merges the basmala into the text of ayah 1 for
  * every surah except At-Tawbah (9). For correct ayah-by-ayah memorization we
  * store the pure numbered ayah, and the bot shows the basmala as the surah
- * opening instead (see packages/core/basmala.ts). The user still sees the
+ * opening instead (see src/core/basmala.ts). The user still sees the
  * full basmala; it just lives in its proper place.
  *
  * The basmala bytes come from the source itself (surah 1 ayah 1), so we never
