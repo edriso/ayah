@@ -5,6 +5,7 @@
   "license": "0BSD",
   "description": "Ayah: a Telegram bot that helps people memorize the Quran by sending one ayah a day plus the last ten ayat of the same surah.",
   "type": "module",
+  "packageManager": "pnpm@10.33.0",
   "engines": {
     "node": ">=20.0.0"
   },
