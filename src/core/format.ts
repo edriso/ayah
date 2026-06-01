@@ -5,10 +5,17 @@
 // contains characters that Markdown/HTML parsing would choke on (the send
 // would fail with a 400). Plain text always renders correctly.
 //
-// A daily delivery can be MORE than one message: today's new ayah, then the
-// review of the previous ayat. On long surahs the review itself is split
-// across several messages so none ever exceeds Telegram's size limit. The
-// longest single ayah is well under the limit, so today's ayah always fits.
+// Reading order matters for hifz. A delivery is ONE passage read in mushaf
+// order: the previous ayat (ascending) leading INTO today's new ayah, which
+// sits last and is marked so the eye lands on it. The title names today's
+// ayah up front (so the notification preview and the top of the message both
+// show what is new), then the passage reads top to bottom up to it. This is
+// the connecting recitation (الربط) hifaz is built on: you never read the new
+// ayah in isolation above its context, you read up to it.
+//
+// On long surahs the passage is split across several messages, always at ayah
+// boundaries so no ayah is ever cut in half. The longest single ayah is well
+// under Telegram's limit, so a line never needs splitting.
 
 import type { DisplayAyah, DisplaySurah } from './types';
 import { toArabicDigits } from './arabic';
@@ -19,21 +26,15 @@ export const TELEGRAM_MAX = 4096;
 // Telegram counts emoji and any future small wording changes.
 const SAFE_LIMIT = 4000;
 
+// Marker appended to today's new ayah, the last line of the passage, so the
+// eye lands on it as the newest ayah after reading up to it.
+const TODAY_MARKER = '👈';
+// Header for any continuation message when the passage is split.
+const CONTINUED_HEADER = '📖 (تابع القراءة)';
+
 /** Wrap an ayah number in the ornamented end-of-ayah brackets: ﴿٥﴾. */
 export function ayahMarker(numberInSurah: number): string {
   return `﴿${toArabicDigits(numberInSurah)}﴾`;
-}
-
-/**
- * Arabic-correct phrase for "the last N ayat", following number-noun
- * agreement (singular for 1, dual for 2, plural آيات for 3-10, singular آية
- * for 11+). The count digit is shown only from 3 up, where it reads naturally.
- */
-export function reviewCountPhrase(count: number): string {
-  if (count === 1) return 'آخر آية';
-  if (count === 2) return 'آخر آيتين';
-  if (count <= 10) return `آخر ${toArabicDigits(count)} آيات`;
-  return `آخر ${toArabicDigits(count)} آية`;
 }
 
 /** Render one ayah line: the text followed by its numbered marker. */
@@ -52,56 +53,71 @@ export interface DailyMessageInput {
   review: DisplayAyah[];
   /**
    * The basmala text to show as the surah opening, or undefined to show
-   * none. The caller passes it only when this delivery covers the start of a
-   * surah that uses a basmala. Passing the text in (instead of hard-coding
-   * it) keeps what we display identical to the verified source.
+   * none. The caller passes it only when this delivery's passage actually
+   * starts at ayah 1 of a surah that uses a basmala. Passing the text in
+   * (instead of hard-coding it) keeps what we display identical to the
+   * verified source.
    */
   basmala?: string;
 }
 
 /**
- * Build the ordered list of messages to send for one delivery:
- *   - message 1: today's new ayah (with the surah name, and the basmala when
- *     the surah opening is shown);
- *   - then the review of the previous ayat, as ONE message when it fits, or
- *     several messages split at ayah boundaries when it is too long.
+ * Build the ordered list of messages to send for one delivery. The whole
+ * delivery is a single passage in reading order:
  *
+ *   🌿 آية اليوم — سورة … ، آية N      ← names today's new ayah
+ *   📖 اقرأ بالترتيب حتى آية اليوم:     ← only when there are previous ayat
+ *   (basmala, when the passage starts at ayah 1)
+ *   previous ayah, previous ayah, …    ← ascending
+ *   today's ayah 👈                     ← last, marked
+ *
+ * Returned as ONE message when it fits, or several split at ayah boundaries
+ * when it is too long (each within Telegram's limit). With review off, or on
+ * the surah's first ayah, the passage is just today's ayah on its own.
  * Returns at least one message.
  */
 export function formatDailyMessages(input: DailyMessageInput): string[] {
   const { surah, today, review, basmala } = input;
 
-  const opening = basmala ? `\n${basmala}` : '';
-  const todayBlock = `🌿 آية اليوم\n\nسورة ${surah.nameAr}${opening}\n\n${formatAyahLine(today)}`;
+  const hasReview = review.length > 0;
+  const title = `🌿 آية اليوم — سورة ${surah.nameAr}، آية ${toArabicDigits(today.numberInSurah)}`;
+  // The reading instruction only makes sense when there is something to read
+  // up to today; on a lone ayah we drop it (and the 👈, which would point at
+  // the only line).
+  const header = hasReview ? `${title}\n\n📖 اقرأ بالترتيب حتى آية اليوم:` : title;
 
-  if (review.length === 0) return [todayBlock];
+  // The passage body, top to bottom: the surah opening (only when this passage
+  // truly starts at ayah 1), the previous ayat ascending, then today's ayah
+  // marked.
+  const lines: string[] = [];
+  if (basmala) lines.push(basmala);
+  for (const ayah of review) lines.push(formatAyahLine(ayah));
+  lines.push(hasReview ? `${formatAyahLine(today)} ${TODAY_MARKER}` : formatAyahLine(today));
 
-  const header = `📖 للمراجعة (${reviewCountPhrase(review.length)} من سورة ${surah.nameAr})`;
-  const lines = review.map(formatAyahLine);
-
-  // Happy path: everything fits in one message, keep it as one.
-  const combined = `${todayBlock}\n\n———\n\n${header}\n\n${lines.join('\n')}`;
+  // Happy path: the whole passage fits in one message.
+  const combined = `${header}\n\n${lines.join('\n')}`;
   if (combined.length <= SAFE_LIMIT) return [combined];
 
-  // Too long: today's ayah on its own, then the review split into chunks.
-  return [todayBlock, ...chunkReview(header, lines, SAFE_LIMIT)];
+  // Too long: split at ayah boundaries. The first message keeps the full
+  // header; later messages carry the short continuation header. Today's ayah,
+  // being last, lands in the final message — the title already named it.
+  return chunkPassage(header, lines, SAFE_LIMIT);
 }
 
 /**
- * Pack review lines into messages no longer than `limit`. The first message
- * carries the full header; later messages carry a short "continued" header.
- * A single ayah line always fits (the longest ayah is far under the limit),
- * so no line is ever split mid-ayah.
+ * Pack passage lines into messages no longer than `limit`. The first message
+ * carries `firstHeader`; later messages carry the continuation header. A
+ * single line always fits (the longest ayah is far under the limit), so a line
+ * is never split mid-ayah.
  */
-function chunkReview(header: string, lines: string[], limit: number): string[] {
-  const continued = '📖 (تابع المراجعة)';
+function chunkPassage(firstHeader: string, lines: string[], limit: number): string[] {
   const messages: string[] = [];
-  let head = header;
+  let head = firstHeader;
   let body: string[] = [];
 
   const flush = () => {
     messages.push(`${head}\n\n${body.join('\n')}`);
-    head = continued;
+    head = CONTINUED_HEADER;
     body = [];
   };
 

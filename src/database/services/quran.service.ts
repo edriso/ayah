@@ -131,12 +131,13 @@ export async function buildDailyContent(
   const range = reviewRange(ayah.numberInSurah, reviewCount);
   const review = range ? await getReviewAyat(ayah.surahNumber, range.from, range.to) : [];
 
-  // Show the basmala as the surah banner only on the day today's ayah is the
-  // surah opening (ayah 1). The message renders the basmala above today's
-  // ayah, so it must only appear when today's ayah actually IS ayah 1 -
-  // otherwise it would sit above a mid-surah ayah while the real opening (in
-  // the review) goes unmarked. (On day 1 of a surah there is no review yet.)
-  const showBasmala = ayah.numberInSurah === 1 && surahUsesBasmala(ayah.surahNumber);
+  // Show the basmala as the surah opening only when this delivery's passage
+  // actually STARTS at ayah 1 - either today is ayah 1, or the review window
+  // reaches back to ayah 1. The message renders the passage in order, so the
+  // basmala sits exactly where it belongs (above ayah 1) and never floats
+  // above a mid-surah ayah.
+  const passageStart = review.length > 0 ? review[0].numberInSurah : ayah.numberInSurah;
+  const showBasmala = passageStart === 1 && surahUsesBasmala(ayah.surahNumber);
 
   return {
     surah: { number: ayah.surah.number, nameAr: ayah.surah.nameAr },

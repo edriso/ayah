@@ -1,11 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  formatDailyMessages,
-  ayahMarker,
-  formatAyahLine,
-  reviewCountPhrase,
-  TELEGRAM_MAX,
-} from './format';
+import { formatDailyMessages, ayahMarker, formatAyahLine, TELEGRAM_MAX } from './format';
 import { toArabicDigits } from './arabic';
 
 const surah = { number: 112, nameAr: 'الإخلاص' };
@@ -28,17 +22,6 @@ describe('arabic helpers', () => {
   });
 });
 
-describe('reviewCountPhrase (Arabic number-noun agreement)', () => {
-  it('uses singular for 1, dual for 2, plural for 3-10, singular for 11+', () => {
-    expect(reviewCountPhrase(1)).toBe('آخر آية');
-    expect(reviewCountPhrase(2)).toBe('آخر آيتين');
-    expect(reviewCountPhrase(3)).toBe('آخر ٣ آيات');
-    expect(reviewCountPhrase(10)).toBe('آخر ١٠ آيات');
-    expect(reviewCountPhrase(11)).toBe('آخر ١١ آية');
-    expect(reviewCountPhrase(20)).toBe('آخر ٢٠ آية');
-  });
-});
-
 describe('formatDailyMessages', () => {
   const today = { numberInSurah: 4, text: 'آية ٤' };
   const review = [
@@ -47,31 +30,41 @@ describe('formatDailyMessages', () => {
     { numberInSurah: 3, text: 'آية ٣' },
   ];
 
-  it('returns one message with today and the review when it fits', () => {
+  it('returns one ascending passage ending with today, when it fits', () => {
     const msgs = formatDailyMessages({ surah, today, review });
     expect(msgs).toHaveLength(1);
-    expect(msgs[0]).toContain('آية اليوم');
-    expect(msgs[0]).toContain('سورة الإخلاص');
-    expect(msgs[0]).toContain('للمراجعة');
-    expect(msgs[0]).toContain('﴿٤﴾'); // today
-    expect(msgs[0]).toContain('آخر ٣ آيات'); // 3 previous ayat
+    const m = msgs[0];
+    // Title names today's new ayah up front (good notification preview).
+    expect(m).toContain('🌿 آية اليوم — سورة الإخلاص، آية ٤');
+    // Reading instruction is present when there are previous ayat.
+    expect(m).toContain('اقرأ بالترتيب حتى آية اليوم');
+    // The passage reads ascending: ﴿١﴾ before ﴿٢﴾ before … before today ﴿٤﴾.
+    const order = ['﴿١﴾', '﴿٢﴾', '﴿٣﴾', '﴿٤﴾'].map((mk) => m.indexOf(mk));
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+    // Today (last) carries the marker; an earlier ayah does not.
+    expect(m).toContain('﴿٤﴾ 👈');
+    expect(m).not.toContain('﴿٣﴾ 👈');
   });
 
-  it('returns just today when there is no review', () => {
+  it('returns just today, unmarked and without the instruction, when no review', () => {
     const msgs = formatDailyMessages({ surah, today, review: [] });
     expect(msgs).toHaveLength(1);
-    expect(msgs[0]).toContain('آية اليوم');
-    expect(msgs[0]).not.toContain('للمراجعة');
+    expect(msgs[0]).toContain('🌿 آية اليوم — سورة الإخلاص، آية ٤');
+    expect(msgs[0]).not.toContain('اقرأ بالترتيب');
+    expect(msgs[0]).not.toContain('👈');
   });
 
-  it('shows the basmala only when one is passed in', () => {
+  it('shows the basmala (passed in) as the first line, above ayah 1', () => {
     const basmala = 'بِسْمِ ٱللَّهِ';
     expect(formatDailyMessages({ surah, today, review })[0]).not.toContain(basmala);
-    expect(formatDailyMessages({ surah, today, review, basmala })[0]).toContain(basmala);
+    const m = formatDailyMessages({ surah, today, review, basmala })[0];
+    expect(m).toContain(basmala);
+    // The basmala sits above the first ayah, not below it.
+    expect(m.indexOf(basmala)).toBeLessThan(m.indexOf('﴿١﴾'));
   });
 
-  it('splits into several messages when the review is too long', () => {
-    // 20 long review ayat that cannot fit in one Telegram message.
+  it('splits at ayah boundaries when too long, keeping every ayah intact', () => {
+    // 20 long review ayat plus today: cannot fit in one Telegram message.
     const long = Array.from({ length: 20 }, (_, i) => ({
       numberInSurah: i + 1,
       text: 'آية طويلة '.repeat(40).trim(),
@@ -80,14 +73,19 @@ describe('formatDailyMessages', () => {
     const msgs = formatDailyMessages({ surah, today: todayLong, review: long });
 
     expect(msgs.length).toBeGreaterThan(1);
-    // every message stays within Telegram's limit
+    // No message is ever cut off past Telegram's limit.
     for (const m of msgs) expect(m.length).toBeLessThanOrEqual(TELEGRAM_MAX);
-    // today's ayah is the first message on a split day
-    expect(msgs[0]).toContain('آية اليوم');
-    // continued review messages are marked
+    // The title (naming today) leads the first message, so the notification
+    // preview still shows what is new even though today's text comes last.
+    expect(msgs[0]).toContain('🌿 آية اليوم');
+    // Continuation messages are marked.
     expect(msgs.slice(1).some((m) => m.includes('تابع'))).toBe(true);
-    // no review ayah is dropped: 20 markers across all messages
+    // Today's ayah lands in the LAST message, marked.
+    expect(msgs[msgs.length - 1]).toContain('﴿٢١﴾ 👈');
+    // No ayah is dropped: all 21 markers appear across the messages, each once.
     const allText = msgs.join('\n');
-    for (let i = 1; i <= 20; i++) expect(allText).toContain(ayahMarker(i));
+    for (let i = 1; i <= 21; i++) {
+      expect(allText.split(ayahMarker(i)).length - 1).toBe(1);
+    }
   });
 });
