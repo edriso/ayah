@@ -10,6 +10,7 @@ import {
   resumeSubscriber,
   setStartPosition,
   setOrder,
+  commitDelivery,
   getEntryForAyah,
   getEntryAtPosition,
   getProgressView,
@@ -25,7 +26,7 @@ import {
 import { config } from './config';
 import { logger } from './lib/logger';
 import { COPY, settingsSummary, formatTimeAr, daysSummaryAr, orderSummaryAr } from './lib/copy';
-import { previewCurrent, previewAyah } from './lib/deliver';
+import { buildTodayView, previewAyah } from './lib/deliver';
 import { runDeliveryOnce } from './scheduler';
 import { buildDaysKeyboard, DAY_TOGGLE_PREFIX, DAYS_DONE } from './lib/days-keyboard';
 import { buildTimeKeyboard, TIME_PICK_PREFIX } from './lib/time-keyboard';
@@ -209,18 +210,27 @@ bot.command('pause', async (ctx) => {
   await togglePause(ctx, sub);
 });
 
-// /today: show the current ayah without sending the daily push or moving
-// the subscriber forward. A pure peek. May be more than one message when the
-// review is long.
+// /today: read today's ayah now. Pulling it before the scheduled send COUNTS
+// as today's delivery (we record it and move forward), so the bot does not send
+// the same ayah again at the user's send time. Pulling it again the same day
+// just re-shows it. On an off day or while paused it stays a pure peek.
+//
+// We commit AFTER the messages are shown, so a failed reply leaves the day
+// unclaimed and the scheduler still delivers next tick. The unique
+// (subscriber, date) index keeps it safe even if the scheduler races at the
+// same minute (the loser's commit returns 'duplicate'); the only residual
+// artifact of that sub-second race is one duplicate message, never a double
+// advance. See the note in scheduler.ts.
 bot.command('today', async (ctx) => {
   const sub = await subscriberFor(ctx);
   if (!sub) return;
-  const messages = await previewCurrent(sub);
-  if (messages.length === 0) {
+  const now = new Date();
+  const view = await buildTodayView(sub, now);
+  if (view.messages.length === 0) {
     // On the looping kids track this should never happen for a real user; if
     // it does, it is a data fault (a dangling currentEntryId). Log it so it is
     // visible rather than silent.
-    logger.warn('previewCurrent returned no messages', {
+    logger.warn('buildTodayView returned no messages', {
       subscriberId: sub.id,
       trackId: sub.trackId,
       currentEntryId: sub.currentEntryId,
@@ -228,7 +238,19 @@ bot.command('today', async (ctx) => {
     await ctx.reply(COPY.brokenOrNotStarted);
     return;
   }
-  for (const message of messages) await ctx.reply(message);
+  if (view.alreadyDelivered) await ctx.reply(COPY.todayAlready);
+  for (const message of view.messages) await ctx.reply(message);
+  if (view.claim) {
+    await commitDelivery({
+      subscriberId: sub.id,
+      entry: view.claim.entry,
+      scheduledFor: view.claim.scheduledFor,
+      totalEntries: view.claim.totalEntries,
+      loops: view.claim.loops,
+      startedAt: sub.startedAt,
+      now,
+    });
+  }
   // Remind a paused user of their state, since /today works while paused.
   if (sub.pausedAt) await ctx.reply(COPY.pausedHint);
 });

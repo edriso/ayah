@@ -1,17 +1,21 @@
 import type { Bot, Context } from 'grammy';
-import { dueLocalDate, formatDailyMessages } from '../core';
+import { dueLocalDate, formatDailyMessages, getLocalContext, isDayActive } from '../core';
 import {
   listDeliverableSubscribers,
   hasDeliveryFor,
+  getDeliveryFor,
   resolveTargetEntry,
   commitDelivery,
   buildDailyContent,
   countTrackEntries,
+  getEntryById,
+  getTrackById,
   markBlocked,
   getTrackByKey,
   getEntryForAyah,
   KIDS_TRACK,
   type DeliverableSubscriber,
+  type EntryWithAyah,
 } from '../database';
 import { sendMessages } from './send';
 import { logger } from './logger';
@@ -101,21 +105,85 @@ export async function deliverDueSubscribers(
   return stats;
 }
 
-/**
- * Build the message(s) for a subscriber's CURRENT ayah without sending or
- * advancing. Used by /today so a user can peek at where they are. Returns an
- * empty array if there is nothing to show (finished a non-looping track).
- */
-export async function previewCurrent(sub: {
+/** What /today should send the user, and whether to record it as the day's
+ *  delivery so the scheduler does not send the same ayah again. */
+export interface TodayView {
+  /** The messages to reply (today's ayah + review), or empty when nothing can
+   *  be prepared (a dangling entry, or a finished non-looping track). */
+  messages: string[];
+  /**
+   * Set when this view should be COMMITTED as today's delivery (the user pulled
+   * their ayah before the scheduled send). The caller records it AFTER the
+   * messages are shown, so the scheduler skips the day. Null on an off day or
+   * while paused (nothing scheduled to dedupe against), and null when today was
+   * already delivered (re-show only).
+   */
+  claim: {
+    scheduledFor: string;
+    entry: EntryWithAyah;
+    totalEntries: number;
+    loops: boolean;
+  } | null;
+  /** True when today's ayah was already delivered and this is a re-show. */
+  alreadyDelivered: boolean;
+}
+
+/** Fields buildTodayView needs off a subscriber row. */
+export interface TodaySubscriber {
+  id: number;
+  timezone: string;
+  activeDays: number;
+  pausedAt: Date | null;
   trackId: number;
   currentEntryId: number | null;
   startedAt: Date | null;
   reviewCount: number;
-}): Promise<string[]> {
+}
+
+/**
+ * Decide what /today shows and whether it counts as today's delivery.
+ *
+ * /today is "give me today's ayah now". If the user pulls it on an active day
+ * before the scheduled send, that pull IS today's delivery: we show the ayah
+ * and the caller records it (so the scheduler does not send it again). If today
+ * was already delivered (by an earlier /today or the scheduler), we re-show the
+ * exact ayah that was delivered (from the recorded trackEntryId, since the
+ * subscriber's pointer has already advanced past it) without advancing again.
+ * On an off day or while paused there is no scheduled send to dedupe against,
+ * so /today stays a pure peek that never advances.
+ */
+export async function buildTodayView(sub: TodaySubscriber, now: Date): Promise<TodayView> {
+  const local = getLocalContext(sub.timezone, now);
+  const scheduledFor = local.date;
+
+  // Already delivered today: re-show exactly that ayah, never claim/advance.
+  const delivered = await getDeliveryFor(sub.id, scheduledFor);
+  if (delivered) {
+    const entry = await getEntryById(delivered.trackEntryId);
+    if (!entry) return { messages: [], claim: null, alreadyDelivered: true };
+    const content = await buildDailyContent(entry, sub.reviewCount);
+    return { messages: formatDailyMessages(content), claim: null, alreadyDelivered: true };
+  }
+
+  // Not delivered yet: show the current ayah (or the first, if not started).
   const entry = await resolveTargetEntry(sub);
-  if (!entry) return [];
+  if (!entry) return { messages: [], claim: null, alreadyDelivered: false };
   const content = await buildDailyContent(entry, sub.reviewCount);
-  return formatDailyMessages(content);
+  const messages = formatDailyMessages(content);
+
+  // Claim it as today's delivery, unless paused or it is not an active day.
+  const claimable = sub.pausedAt === null && isDayActive(sub.activeDays, local.isoWeekday);
+  let claim: TodayView['claim'] = null;
+  if (claimable) {
+    const track = await getTrackById(sub.trackId);
+    claim = {
+      scheduledFor,
+      entry,
+      totalEntries: await countTrackEntries(sub.trackId),
+      loops: track?.loops ?? false,
+    };
+  }
+  return { messages, claim, alreadyDelivered: false };
 }
 
 /**

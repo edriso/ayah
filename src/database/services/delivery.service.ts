@@ -36,6 +36,19 @@ export async function hasDeliveryFor(subscriberId: number, scheduledFor: string)
 }
 
 /**
+ * The track entry already delivered for this subscriber's local date, or null.
+ * Used by /today to re-show exactly the ayah that was delivered: the
+ * subscriber's currentEntryId has already advanced past it, so the recorded
+ * trackEntryId is the only way back to the right ayah.
+ */
+export function getDeliveryFor(subscriberId: number, scheduledFor: string) {
+  return prisma.deliveryLog.findUnique({
+    where: { subscriberId_scheduledFor: { subscriberId, scheduledFor } },
+    select: { trackEntryId: true },
+  });
+}
+
+/**
  * Work out which entry to send to this subscriber next.
  *   - has a current entry      -> that entry
  *   - never started            -> the track's first entry (position 0)

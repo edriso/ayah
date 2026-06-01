@@ -167,7 +167,7 @@ export const COPY = {
     'بوت "آية" يساعدك على حفظ القرآن بإرسال آية واحدة كل يوم مع آيات سابقة للمراجعة.',
     '',
     'الأوامر:',
-    '/today: عرض آية اليوم الآن (بدون تغيير موضعك)',
+    '/today: عرض آية اليوم الآن (تُحتسب آيتك لهذا اليوم)',
     `/surah: اختيار سورة البداية، أو اكتب رقم السورة والآية مثل ${ltr('/surah 67 5')}`,
     '/order: اختيار الترتيب (منهج الحفظ من الناس، أو ترتيب المصحف من الفاتحة)',
     `/time: ضبط وقت الإرسال، مثل ${ltr('/time 07:00')}`,
@@ -209,6 +209,9 @@ export const COPY = {
   settingsSurahBtn: '📖 سورة البداية',
 
   brokenOrNotStarted: 'لم نتمكن من تجهيز آية لك الآن، حاول لاحقًا بإذن الله.',
+
+  // Shown above the ayah when /today re-shows an ayah already delivered today.
+  todayAlready: 'لقد وصلتك آية اليوم بالفعل، وهذه هي 🌿',
 
   // The command sits at the end of its line so it stays tappable and the
   // right-to-left text does not reorder around it.
