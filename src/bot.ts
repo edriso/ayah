@@ -1,14 +1,8 @@
 import { Bot, InlineKeyboard, type Context } from 'grammy';
-import {
-  toggleDay,
-  activeDaysList,
-  clampReviewCount,
-  MAX_REVIEW_COUNT,
-  toAsciiDigits,
-} from './core';
+import { activeDaysList, clampReviewCount, MAX_REVIEW_COUNT, toAsciiDigits } from './core';
 import {
   ensureSubscriber,
-  setActiveDays,
+  toggleActiveDay,
   setDeliveryTime,
   setTimezone,
   setReviewCount,
@@ -180,13 +174,22 @@ bot.command('surah', async (ctx) => {
   const sub = await subscriberFor(ctx);
   if (!sub) return;
   const arg = commandArg(ctx, 'surah');
-  if (!arg) return void ctx.reply(COPY.surahPrompt, { reply_markup: buildSurahKeyboard(SURAHS) });
+  if (!arg) {
+    await ctx.reply(COPY.surahPrompt, { reply_markup: buildSurahKeyboard(SURAHS) });
+    return;
+  }
   const parsed = parseSurahArg(arg, ayahCountFor);
-  if (!parsed) return void ctx.reply(COPY.surahInvalid);
+  if (!parsed) {
+    await ctx.reply(COPY.surahInvalid);
+    return;
+  }
   // Reposition within the subscriber's CURRENT order (track), so /surah does
   // not silently change their forward/reverse choice.
   const entry = await getEntryForAyah(sub.trackId, parsed.surah, parsed.ayah);
-  if (!entry) return void ctx.reply(COPY.surahInvalid);
+  if (!entry) {
+    await ctx.reply(COPY.surahInvalid);
+    return;
+  }
   await setStartPosition(sub.id, entry.id);
   await ctx.reply(COPY.startSet(entry.ayah.surah.nameAr, entry.ayah.numberInSurah));
 });
@@ -222,7 +225,8 @@ bot.command('today', async (ctx) => {
       trackId: sub.trackId,
       currentEntryId: sub.currentEntryId,
     });
-    return void ctx.reply(COPY.brokenOrNotStarted);
+    await ctx.reply(COPY.brokenOrNotStarted);
+    return;
   }
   for (const message of messages) await ctx.reply(message);
   // Remind a paused user of their state, since /today works while paused.
@@ -234,12 +238,16 @@ bot.command('review', async (ctx) => {
   const sub = await subscriberFor(ctx);
   if (!sub) return;
   const arg = commandArg(ctx, 'review');
-  if (!arg) return void ctx.reply(COPY.reviewUsage(sub.reviewCount));
+  if (!arg) {
+    await ctx.reply(COPY.reviewUsage(sub.reviewCount));
+    return;
+  }
   // Accept Arabic-Indic digits, and only a plain 1-2 digit number (no hex,
   // exponent, or sign sneaking through Number()).
   const normalized = toAsciiDigits(arg.trim());
   if (!/^\d{1,2}$/.test(normalized) || Number(normalized) > MAX_REVIEW_COUNT) {
-    return void ctx.reply(COPY.reviewInvalid);
+    await ctx.reply(COPY.reviewInvalid);
+    return;
   }
   const count = clampReviewCount(Number(normalized));
   await setReviewCount(sub.id, count);
@@ -251,9 +259,15 @@ bot.command('time', async (ctx) => {
   const sub = await subscriberFor(ctx);
   if (!sub) return;
   const arg = commandArg(ctx, 'time');
-  if (!arg) return void ctx.reply(COPY.timePrompt, { reply_markup: buildTimeKeyboard() });
+  if (!arg) {
+    await ctx.reply(COPY.timePrompt, { reply_markup: buildTimeKeyboard() });
+    return;
+  }
   const parsed = parseTime(arg);
-  if (!parsed) return void ctx.reply(COPY.timeInvalid);
+  if (!parsed) {
+    await ctx.reply(COPY.timeInvalid);
+    return;
+  }
   await setDeliveryTime(sub.id, parsed.hour, parsed.minute);
   await ctx.reply(COPY.timeUpdated(formatTimeAr(parsed.hour, parsed.minute), sub.timezone));
 });
@@ -263,8 +277,14 @@ bot.command('timezone', async (ctx) => {
   const sub = await subscriberFor(ctx);
   if (!sub) return;
   const arg = commandArg(ctx, 'timezone');
-  if (!arg) return void ctx.reply(COPY.tzPrompt, { reply_markup: buildTimezoneKeyboard() });
-  if (!isValidTimezone(arg)) return void ctx.reply(COPY.tzInvalid);
+  if (!arg) {
+    await ctx.reply(COPY.tzPrompt, { reply_markup: buildTimezoneKeyboard() });
+    return;
+  }
+  if (!isValidTimezone(arg)) {
+    await ctx.reply(COPY.tzInvalid);
+    return;
+  }
   await setTimezone(sub.id, arg);
   await ctx.reply(COPY.tzUpdated(arg));
 });
@@ -287,10 +307,16 @@ bot.command('resume', async (ctx) => {
   const sub = await subscriberFor(ctx);
   if (!sub) return;
   const cleared = await resumeSubscriber(sub.id);
-  if (cleared) return void ctx.reply(COPY.resumed);
+  if (cleared) {
+    await ctx.reply(COPY.resumed);
+    return;
+  }
   // Not paused. If they will still get nothing because they have no active
   // days, point them at the real blocker instead of claiming "already active".
-  if (activeDaysList(sub.activeDays).length === 0) return void ctx.reply(COPY.daysNone);
+  if (activeDaysList(sub.activeDays).length === 0) {
+    await ctx.reply(COPY.daysNone);
+    return;
+  }
   await ctx.reply(COPY.alreadyActive);
 });
 
@@ -298,23 +324,30 @@ bot.command('resume', async (ctx) => {
 
 bot.callbackQuery(new RegExp(`^${DAY_TOGGLE_PREFIX}([1-7])$`), async (ctx) => {
   const sub = await subscriberFor(ctx);
-  if (!sub) return void ctx.answerCallbackQuery();
+  if (!sub) {
+    await ctx.answerCallbackQuery();
+    return;
+  }
   const iso = Number(ctx.match![1]);
-  const newMask = toggleDay(sub.activeDays, iso);
-  await setActiveDays(sub.id, newMask);
-  // Redraw the keyboard with the new checkmarks.
+  // Toggle atomically at the database and redraw from the returned mask, so
+  // two fast taps can never read the same stale mask and cancel each other.
+  const newMask = await toggleActiveDay(sub.id, iso);
   await ctx.editMessageReplyMarkup({ reply_markup: buildDaysKeyboard(newMask) });
   await ctx.answerCallbackQuery();
 });
 
 bot.callbackQuery(DAYS_DONE, async (ctx) => {
   const sub = await subscriberFor(ctx);
-  if (!sub) return void ctx.answerCallbackQuery();
+  if (!sub) {
+    await ctx.answerCallbackQuery();
+    return;
+  }
   if (activeDaysList(sub.activeDays).length === 0) {
     // Keep the keyboard up so they can pick a day right here, instead of
     // dismissing it and forcing them to run /days again.
     await ctx.reply(COPY.daysNone);
-    return void ctx.answerCallbackQuery();
+    await ctx.answerCallbackQuery();
+    return;
   }
   await ctx.editMessageReplyMarkup(); // remove the keyboard
   await ctx.reply(COPY.daysUpdated(daysSummaryAr(sub.activeDays)));
@@ -325,7 +358,10 @@ bot.callbackQuery(DAYS_DONE, async (ctx) => {
 
 bot.callbackQuery(new RegExp(`^${TIME_PICK_PREFIX}(\\d{2})(\\d{2})$`), async (ctx) => {
   const sub = await subscriberFor(ctx);
-  if (!sub) return void ctx.answerCallbackQuery();
+  if (!sub) {
+    await ctx.answerCallbackQuery();
+    return;
+  }
   const hour = Number(ctx.match![1]);
   const minute = Number(ctx.match![2]);
   await setDeliveryTime(sub.id, hour, minute);
@@ -338,9 +374,15 @@ bot.callbackQuery(new RegExp(`^${TIME_PICK_PREFIX}(\\d{2})(\\d{2})$`), async (ct
 
 bot.callbackQuery(new RegExp(`^${TZ_PICK_PREFIX}(\\d+)$`), async (ctx) => {
   const sub = await subscriberFor(ctx);
-  if (!sub) return void ctx.answerCallbackQuery();
+  if (!sub) {
+    await ctx.answerCallbackQuery();
+    return;
+  }
   const tz = COMMON_TIMEZONES[Number(ctx.match![1])]?.iana;
-  if (!tz) return void ctx.answerCallbackQuery();
+  if (!tz) {
+    await ctx.answerCallbackQuery();
+    return;
+  }
   await setTimezone(sub.id, tz);
   await ctx.editMessageReplyMarkup(); // remove the keyboard
   await ctx.reply(COPY.tzUpdated(tz));
@@ -352,7 +394,10 @@ bot.callbackQuery(new RegExp(`^${TZ_PICK_PREFIX}(\\d+)$`), async (ctx) => {
 // "Start from An-Nas (default)": set the reverse order, position 0 (An-Nas).
 bot.callbackQuery(ONBOARD_DEFAULT, async (ctx) => {
   const sub = await subscriberFor(ctx);
-  if (!sub) return void ctx.answerCallbackQuery();
+  if (!sub) {
+    await ctx.answerCallbackQuery();
+    return;
+  }
   const entry = await applyOrderAtStart(sub.id, KIDS_TRACK.key);
   await ctx.editMessageReplyMarkup(); // remove the keyboard
   await ctx.reply(COPY.startSet(entry.ayah.surah.nameAr, entry.ayah.numberInSurah));
@@ -370,7 +415,10 @@ bot.callbackQuery(ONBOARD_PICK, async (ctx) => {
 // offer the surah picker, so they can still choose where in that order to begin.
 bot.callbackQuery(ONBOARD_MUSHAF, async (ctx) => {
   const sub = await subscriberFor(ctx);
-  if (!sub) return void ctx.answerCallbackQuery();
+  if (!sub) {
+    await ctx.answerCallbackQuery();
+    return;
+  }
   await applyOrderAtStart(sub.id, MUSHAF_TRACK.key);
   await ctx.editMessageText(`${COPY.orderSet(MUSHAF_TRACK.key)}\n\n${COPY.surahPrompt}`, {
     reply_markup: buildSurahKeyboard(SURAHS),
@@ -397,10 +445,16 @@ bot.callbackQuery(SURAH_NOOP, (ctx) => ctx.answerCallbackQuery());
 // Pick a surah: start at that surah, ayah 1, in the subscriber's current order.
 bot.callbackQuery(new RegExp(`^${SURAH_PICK_PREFIX}(\\d+)$`), async (ctx) => {
   const sub = await subscriberFor(ctx);
-  if (!sub) return void ctx.answerCallbackQuery();
+  if (!sub) {
+    await ctx.answerCallbackQuery();
+    return;
+  }
   const surah = Number(ctx.match![1]);
   const entry = await getEntryForAyah(sub.trackId, surah, 1);
-  if (!entry) return void ctx.answerCallbackQuery();
+  if (!entry) {
+    await ctx.answerCallbackQuery();
+    return;
+  }
   await setStartPosition(sub.id, entry.id);
   await ctx.editMessageReplyMarkup(); // remove the keyboard
   await ctx.reply(COPY.startSet(entry.ayah.surah.nameAr, entry.ayah.numberInSurah));
@@ -411,14 +465,21 @@ bot.callbackQuery(new RegExp(`^${SURAH_PICK_PREFIX}(\\d+)$`), async (ctx) => {
 
 bot.callbackQuery(new RegExp(`^${ORDER_PICK_PREFIX}(.+)$`), async (ctx) => {
   const sub = await subscriberFor(ctx);
-  if (!sub) return void ctx.answerCallbackQuery();
+  if (!sub) {
+    await ctx.answerCallbackQuery();
+    return;
+  }
   const key = ctx.match![1];
-  if (!ORDERS.some((o) => o.key === key)) return void ctx.answerCallbackQuery();
+  if (!ORDERS.some((o) => o.key === key)) {
+    await ctx.answerCallbackQuery();
+    return;
+  }
   const track = await getTrackByKey(key);
   if (track.id === sub.trackId) {
     await ctx.editMessageReplyMarkup(); // remove the keyboard
     await ctx.reply(COPY.orderUnchanged(key));
-    return void ctx.answerCallbackQuery();
+    await ctx.answerCallbackQuery();
+    return;
   }
   // Carry their place across: find the same (surah, ayah) in the new track.
   // A not-yet-started subscriber (no current entry) keeps null so their first
@@ -426,10 +487,14 @@ bot.callbackQuery(new RegExp(`^${ORDER_PICK_PREFIX}(.+)$`), async (ctx) => {
   let newEntryId: number | null = null;
   if (sub.currentEntryId !== null) {
     const progress = await getProgressView(sub);
-    if (progress) {
-      const entry = await getEntryForAyah(track.id, progress.surahNumber, progress.numberInSurah);
-      newEntryId = entry?.id ?? null;
-    }
+    const carried = progress
+      ? await getEntryForAyah(track.id, progress.surahNumber, progress.numberInSurah)
+      : null;
+    // Both tracks hold every ayah, so the carry normally resolves. If it does
+    // not (only possible from a dangling current entry), fall back to the new
+    // order's start rather than writing null: a STARTED subscriber reads a null
+    // current entry as "finished" and would stop receiving ayat entirely.
+    newEntryId = carried?.id ?? (await getEntryAtPosition(track.id, 0))?.id ?? null;
   }
   await setOrder(sub.id, track.id, newEntryId);
   await ctx.editMessageReplyMarkup(); // remove the keyboard
@@ -441,7 +506,10 @@ bot.callbackQuery(new RegExp(`^${ORDER_PICK_PREFIX}(.+)$`), async (ctx) => {
 
 bot.callbackQuery(PAUSE_TOGGLE, async (ctx) => {
   const sub = await subscriberFor(ctx);
-  if (!sub) return void ctx.answerCallbackQuery();
+  if (!sub) {
+    await ctx.answerCallbackQuery();
+    return;
+  }
   const wasPaused = sub.pausedAt !== null;
   if (wasPaused) await resumeSubscriber(sub.id);
   else await pauseSubscriber(sub.id);

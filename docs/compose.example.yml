@@ -1,0 +1,51 @@
+# Example Docker Compose fragment for ayah.
+#
+# The real deploy uses ONE shared Compose project on the server (at /opt/bots)
+# that runs several bots against a single shared MariaDB container (`shared-db`).
+# This file is NOT that whole project; it documents just the two services ayah
+# adds, so you can copy them under `services:` in /opt/bots/docker-compose.yml,
+# alongside the existing `shared-db`. It follows the server's own template
+# (compose-with-db.yml).
+#
+# The bot keeps each subscriber's place in the Quran in the shared database, so
+# its .env must point DATABASE_URL at the DB service NAME as host (not localhost):
+#
+#   DATABASE_URL="mysql://<user>:<password>@shared-db:3306/ayah"
+#
+# Secrets live in an env file on the server, never committed:
+#
+#   /opt/bots/telegram/ayah/.env   (BOT_TOKEN, DATABASE_URL, ADMIN_TELEGRAM_ID, ...)
+#
+# Build context and env_file paths are relative to /opt/bots, where the deploy
+# workflow checks the repo out (/opt/bots/telegram/ayah). The deploy runs, from
+# /opt/bots:
+#
+#   docker compose run --rm --build ayah-migrate   # apply migrations + seed, then exit
+#   docker compose up -d --build ayah              # (re)start the long-running bot
+
+services:
+  # One-off helper: apply pending migrations and seed the Quran data, then exit.
+  # `profiles: ["migrate"]` keeps it OUT of a normal `docker compose up`, so it
+  # runs only when called by name. Both steps are idempotent (db:deploy applies
+  # only pending migrations; the seed stops if the text is already loaded), so
+  # running it on every deploy is safe. The bot's single-stage image keeps the
+  # Prisma CLI, so this reuses the same build.
+  ayah-migrate:
+    build: ./telegram/ayah
+    env_file: ./telegram/ayah/.env
+    depends_on:
+      shared-db:
+        condition: service_healthy
+    command: sh -c "pnpm db:deploy && pnpm db:seed"
+    restart: 'no'
+    profiles: ['migrate']
+
+  # The long-running bot. The image defines a HEALTHCHECK against /health, so
+  # `docker ps` and the orchestrator can tell a wedged bot from a healthy one.
+  ayah:
+    build: ./telegram/ayah
+    env_file: ./telegram/ayah/.env
+    restart: unless-stopped
+    depends_on:
+      shared-db:
+        condition: service_healthy

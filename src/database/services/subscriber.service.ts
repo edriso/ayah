@@ -79,12 +79,24 @@ export function setOrder(subscriberId: number, trackId: number, currentEntryId: 
   });
 }
 
-/** Update which weekdays a subscriber receives ayat on (a 7-bit mask). */
-export function setActiveDays(subscriberId: number, activeDays: number) {
-  return prisma.subscriber.update({
+/**
+ * Flip one weekday on/off and return the new mask. The toggle is a single
+ * atomic `active_days = active_days ^ bit` UPDATE at the database, so two fast
+ * taps on the day picker can never lose each other's change the way an
+ * app-side read-modify-write would. `isoWeekday` is 1 (Monday) .. 7 (Sunday);
+ * bit (isoWeekday - 1) matches the mask layout in src/core/days.ts.
+ */
+export async function toggleActiveDay(subscriberId: number, isoWeekday: number): Promise<number> {
+  if (!Number.isInteger(isoWeekday) || isoWeekday < 1 || isoWeekday > 7) {
+    throw new Error(`isoWeekday must be 1..7, got ${isoWeekday}`);
+  }
+  const bit = 1 << (isoWeekday - 1);
+  await prisma.$executeRaw`UPDATE subscribers SET active_days = active_days ^ ${bit} WHERE id = ${subscriberId}`;
+  const row = await prisma.subscriber.findUniqueOrThrow({
     where: { id: subscriberId },
-    data: { activeDays },
+    select: { activeDays: true },
   });
+  return row.activeDays;
 }
 
 /** Update the daily send time (local hour and minute). */

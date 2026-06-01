@@ -70,6 +70,19 @@ docker run -d --env-file .env -p 8080:8080 ayah-bot
 If you run more than one instance, run the migrate and seed steps as a single
 one-off job, not inside each container.
 
+### Production (shared Compose)
+
+On the server the bot runs under one shared Compose project at `/opt/bots`,
+connected to a shared MariaDB (`shared-db`). Copy the two services from
+`docs/compose.example.yml` (`ayah` and the one-off `ayah-migrate`) into
+`/opt/bots/docker-compose.yml`, and set `DATABASE_URL` in the server-side
+`/opt/bots/telegram/ayah/.env` to use the `shared-db` service name as host:
+`mysql://<user>:<password>@shared-db:3306/ayah`.
+
+Pushes are gated: the `deploy` workflow runs `pnpm check` (typecheck + lint +
+tests) first and only deploys if it passes, and `set -e` aborts the deploy if
+the migrate step fails, so a broken build or schema never reaches production.
+
 ## Notes for shared hosting MySQL
 
 The database client is tuned for shared hosting (like Hostinger) that closes
@@ -80,6 +93,8 @@ idle connections quickly. It uses a small pool with a short idle timeout. See
 
 Point your host's health check at `GET /health` on the port from `PORT`
 (default 8080). It returns 200 with a small JSON body while the bot is alive.
+The Docker image also defines a `HEALTHCHECK` against the same endpoint, so
+`docker ps` and the orchestrator can tell a wedged bot from a healthy one.
 
 ## Restarts are safe
 

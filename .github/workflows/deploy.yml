@@ -1,11 +1,13 @@
-# Push-to-deploy: on every push to main, SSH into the VPS, pull the latest
-# code, run the DB migrations + seed, then rebuild this bot's container.
+# Push-to-deploy: on every push to main, first run the checks (typecheck, lint,
+# tests); only if they pass do we SSH into the VPS, pull the latest code, run
+# the DB migrations + seed, then rebuild this bot's container.
 #
-# ayah needs a database (the shared MariaDB) like the dev01x bot. The
-# `ayah-migrate` one-off compose service runs `pnpm db:deploy && pnpm db:seed`.
-# Both are idempotent: db:deploy applies only pending migrations, and the seed
-# stops immediately if the Quran text is already loaded. So running them on
-# every push is safe.
+# ayah needs a database (the shared MariaDB). The `ayah-migrate` one-off compose
+# service runs `pnpm db:deploy && pnpm db:seed`. Both are idempotent: db:deploy
+# applies only pending migrations, and the seed stops immediately if the Quran
+# text is already loaded. So running them on every push is safe. `set -e` aborts
+# the deploy if that step fails, so a broken schema is never followed by a bot
+# restart.
 #
 # Required GitHub secrets (repo -> Settings -> Secrets and variables ->
 # Actions -> New repository secret):
@@ -22,7 +24,30 @@ on:
     branches: [main]
 
 jobs:
+  # Gate: typecheck + lint + tests must pass before we touch production. A push
+  # that breaks the build never reaches the server (it would otherwise fail to
+  # boot or misbehave with no warning).
+  test:
+    runs-on: ubuntu-latest
+    # Dummy values so `prisma generate` (postinstall) and any config import do
+    # not fail; the tests mock the database and never actually connect.
+    env:
+      DATABASE_URL: mysql://ci:ci@127.0.0.1:3306/ci
+      BOT_TOKEN: ci-placeholder
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+
   deploy:
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - name: Deploy over SSH
@@ -32,7 +57,9 @@ jobs:
           username: root
           key: ${{ secrets.SSH_KEY }}
           script: |
+            set -e
             cd /opt/bots/telegram/ayah && git pull
-            cd /opt/bots && docker compose run --rm --build ayah-migrate
+            cd /opt/bots
+            docker compose run --rm --build ayah-migrate
             docker compose up -d --build ayah
             docker image prune -f

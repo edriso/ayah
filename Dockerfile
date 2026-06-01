@@ -51,5 +51,12 @@ ENV NODE_ENV=production
 # Drop root for runtime. The bot writes nothing to disk; logs go to stdout.
 USER node
 
+# Liveness: hit the in-process /health server so an orchestrator can tell a
+# wedged bot from a healthy one and restart it. Uses node's built-in fetch (no
+# curl in the slim image). PORT matches what health.ts binds (default 8080).
+# The start period covers the boot wait for the database and the seed check.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=45s --retries=3 \
+    CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||8080)+'/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+
 # Long-polling bot: no inbound port needed (the /health server binds PORT).
 CMD ["pnpm", "start"]
