@@ -1,5 +1,5 @@
 import { prisma } from '../client';
-import { reviewRange, surahUsesBasmala, type DailyMessageInput } from '../../core';
+import { reviewRange, showsOpeningBasmala, type DailyMessageInput } from '../../core';
 import { TOTAL_AYAT } from '../reference/ayah-counts';
 import { ORDERS } from '../reference/curriculum';
 
@@ -135,9 +135,10 @@ export async function buildDailyContent(
   // actually STARTS at ayah 1 - either today is ayah 1, or the review window
   // reaches back to ayah 1. The message renders the passage in order, so the
   // basmala sits exactly where it belongs (above ayah 1) and never floats
-  // above a mid-surah ayah.
+  // above a mid-surah ayah. The review is ascending, so its first element is
+  // the lowest ayah shown.
   const passageStart = review.length > 0 ? review[0].numberInSurah : ayah.numberInSurah;
-  const showBasmala = passageStart === 1 && surahUsesBasmala(ayah.surahNumber);
+  const showBasmala = showsOpeningBasmala(ayah.surahNumber, passageStart);
 
   return {
     surah: { number: ayah.surah.number, nameAr: ayah.surah.nameAr },

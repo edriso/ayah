@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { surahUsesBasmala, stripArabicMarks, removeBasmalaPrefix } from './basmala';
+import {
+  surahUsesBasmala,
+  showsOpeningBasmala,
+  stripArabicMarks,
+  removeBasmalaPrefix,
+} from './basmala';
 
 // The Uthmani basmala, used as the prefix to strip from a merged ayah 1.
 const BASMALA = 'بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ';
@@ -14,6 +19,28 @@ describe('surahUsesBasmala', () => {
     expect(surahUsesBasmala(2)).toBe(true);
     expect(surahUsesBasmala(112)).toBe(true);
     expect(surahUsesBasmala(114)).toBe(true);
+  });
+});
+
+describe('showsOpeningBasmala', () => {
+  it('shows it whenever ayah 1 is in the passage, today or via review', () => {
+    // Today is ayah 1.
+    expect(showsOpeningBasmala(55, 1)).toBe(true);
+    // Today is mid-surah but the review reaches back to ayah 1.
+    expect(showsOpeningBasmala(2, 1)).toBe(true);
+  });
+
+  it('hides it when the passage starts past ayah 1', () => {
+    expect(showsOpeningBasmala(55, 2)).toBe(false);
+    expect(showsOpeningBasmala(2, 10)).toBe(false);
+  });
+
+  it('never shows it for At-Tawbah (9), even on ayah 1', () => {
+    expect(showsOpeningBasmala(9, 1)).toBe(false);
+  });
+
+  it('never shows it for Al-Fatihah (1), whose ayah 1 is the basmala itself', () => {
+    expect(showsOpeningBasmala(1, 1)).toBe(false);
   });
 });
 

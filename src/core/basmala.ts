@@ -22,6 +22,18 @@ export function surahUsesBasmala(surahNumber: number): boolean {
 }
 
 /**
+ * Whether a delivery shows the basmala as its opening header. The basmala
+ * belongs above ayah 1, so it appears only when the rendered passage actually
+ * starts at ayah 1 - that is, ayah 1 is on screen, whether it is today's ayah
+ * or the first ayah the review reaches back to - AND the surah uses a basmala
+ * header at all (so never At-Tawbah, and never Al-Fatihah whose ayah 1 IS the
+ * basmala). Pass the lowest ayah number shown in the passage.
+ */
+export function showsOpeningBasmala(surahNumber: number, passageStartAyah: number): boolean {
+  return passageStartAyah === 1 && surahUsesBasmala(surahNumber);
+}
+
+/**
  * Remove Arabic diacritics and Quranic marks so two spellings can be compared
  * by their letters alone. Arabic letters (including alef wasla U+0671) are
  * kept; only combining marks are removed.
