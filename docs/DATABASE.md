@@ -74,7 +74,7 @@ again.
 tables. `db:seed` reads the frozen JSON, checks it again against the same
 count table, and then fills:
 
-- `Surah` from the reference table in `src/reference/surahs.ts`, with
+- `Surah` from the reference table in `src/database/reference/surahs.ts`, with
   `ayahCount` taken from the actual text.
 - `Ayah` from the text.
 - `Track` `kids-hifz`.
@@ -84,7 +84,7 @@ The seed is safe to run twice. If the text is already in place it stops.
 
 ## The count table (the oracle)
 
-`src/reference/ayah-counts.ts` holds the number of ayat in each surah in the
+`src/database/reference/ayah-counts.ts` holds the number of ayat in each surah in the
 Hafs reading. The total is exactly 6236. This is an independent check: both
 the fetch and the seed compare the real text against it. A test asserts the
 total is 6236, so a typo in the table is caught by the test suite.
