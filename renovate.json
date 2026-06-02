@@ -1,0 +1,16 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "packageRules": [
+    {
+      "description": "Only track the shared kernel; leave every other dependency alone so this repo stays quiet.",
+      "matchPackageNames": ["*"],
+      "enabled": false
+    },
+    {
+      "description": "Open a PR to bump telegram-bot-kit whenever a new tag is released, so a fix in the kit flows to this bot automatically. The CI gate (pnpm check) runs on the PR; merging it triggers the deploy. Add \"automerge\": true here if you want that hands-off.",
+      "matchPackageNames": ["telegram-bot-kit"],
+      "enabled": true
+    }
+  ]
+}
