@@ -26,9 +26,14 @@ export const TELEGRAM_MAX = 4096;
 // Telegram counts emoji and any future small wording changes.
 const SAFE_LIMIT = 4000;
 
-// Marker appended to today's new ayah, the last line of the passage, so the
-// eye lands on it as the newest ayah after reading up to it.
-const TODAY_MARKER = '👈';
+// Marker appended to today's new ayah, the last line of the passage, so the eye
+// lands on it as the newest ayah after reading up to it. The line is
+// right-to-left (it starts with Arabic), so this last character renders on the
+// ayah's LEFT — which is why the hand must be 👉 (pointing right, back at the
+// ayah), NOT 👈. Text direction follows the Arabic content, not the user's
+// Telegram UI language, so this is correct for every client. Do not "fix" it
+// back to 👈.
+const TODAY_MARKER = '👉';
 // Header for any continuation message when the passage is split.
 const CONTINUED_HEADER = '📖 (تابع القراءة)';
 
@@ -69,7 +74,7 @@ export interface DailyMessageInput {
  *   📖 اقرأ بالترتيب حتى آية اليوم:     ← only when there are previous ayat
  *   (basmala, when the passage starts at ayah 1)
  *   previous ayah, previous ayah, …    ← ascending
- *   today's ayah 👈                     ← last, marked
+ *   today's ayah 👉                     ← last, marked
  *
  * Returned as ONE message when it fits, or several split at ayah boundaries
  * when it is too long (each within Telegram's limit). With review off, or on
@@ -82,7 +87,7 @@ export function formatDailyMessages(input: DailyMessageInput): string[] {
   const hasReview = review.length > 0;
   const title = `🌿 آية اليوم — سورة ${surah.nameAr}، آية ${toArabicDigits(today.numberInSurah)}`;
   // The reading instruction only makes sense when there is something to read
-  // up to today; on a lone ayah we drop it (and the 👈, which would point at
+  // up to today; on a lone ayah we drop it (and the 👉, which would point at
   // the only line).
   const header = hasReview ? `${title}\n\n📖 اقرأ بالترتيب حتى آية اليوم:` : title;
 

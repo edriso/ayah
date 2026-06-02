@@ -42,8 +42,8 @@ describe('formatDailyMessages', () => {
     const order = ['﴿١﴾', '﴿٢﴾', '﴿٣﴾', '﴿٤﴾'].map((mk) => m.indexOf(mk));
     expect(order).toEqual([...order].sort((a, b) => a - b));
     // Today (last) carries the marker; an earlier ayah does not.
-    expect(m).toContain('﴿٤﴾ 👈');
-    expect(m).not.toContain('﴿٣﴾ 👈');
+    expect(m).toContain('﴿٤﴾ 👉');
+    expect(m).not.toContain('﴿٣﴾ 👉');
   });
 
   it('returns just today, unmarked and without the instruction, when no review', () => {
@@ -51,7 +51,7 @@ describe('formatDailyMessages', () => {
     expect(msgs).toHaveLength(1);
     expect(msgs[0]).toContain('🌿 آية اليوم — سورة الإخلاص، آية ٤');
     expect(msgs[0]).not.toContain('اقرأ بالترتيب');
-    expect(msgs[0]).not.toContain('👈');
+    expect(msgs[0]).not.toContain('👉');
   });
 
   it('shows the basmala (passed in) as the first line, above ayah 1', () => {
@@ -81,7 +81,7 @@ describe('formatDailyMessages', () => {
     // Continuation messages are marked.
     expect(msgs.slice(1).some((m) => m.includes('تابع'))).toBe(true);
     // Today's ayah lands in the LAST message, marked.
-    expect(msgs[msgs.length - 1]).toContain('﴿٢١﴾ 👈');
+    expect(msgs[msgs.length - 1]).toContain('﴿٢١﴾ 👉');
     // No ayah is dropped: all 21 markers appear across the messages, each once.
     const allText = msgs.join('\n');
     for (let i = 1; i <= 21; i++) {
