@@ -64,9 +64,6 @@ DeliveryLog (history + idempotency)
   status        "sent" | "failed" | "skipped"
   sentAt
   unique(subscriberId, scheduledFor)   <-- one ayah per local day
-
-CronRun (observability)
-  records each scheduled job run, pruned after 30 days
 ```
 
 ## Why these choices

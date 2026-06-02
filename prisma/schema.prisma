@@ -160,23 +160,3 @@ model DeliveryLog {
   @@index([subscriberId, createdAt])
   @@map("delivery_logs")
 }
-
-// ─── Cron observability ─────────────────────────────────────────────
-
-/// One row per run of a scheduled job, so we can answer "did the 07:00
-/// send actually run today?" without grepping logs. Old rows are pruned by
-/// a cleanup job so the table stays small.
-model CronRun {
-  id           Int       @id @default(autoincrement())
-  name         String    @db.VarChar(64)
-  startedAt    DateTime  @default(now()) @map("started_at")
-  finishedAt   DateTime? @map("finished_at")
-  success      Boolean   @default(false)
-  durationMs   Int?      @map("duration_ms")
-  statsJson    String?   @db.Text @map("stats_json")
-  errorMessage String?   @db.Text @map("error_message")
-
-  @@index([name, startedAt(sort: Desc)])
-  @@index([startedAt])
-  @@map("cron_runs")
-}

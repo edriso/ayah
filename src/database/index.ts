@@ -11,7 +11,6 @@ export type {
   TrackEntry,
   Subscriber,
   DeliveryLog,
-  CronRun,
 } from './generated/prisma/client';
 
 // Services
@@ -19,7 +18,6 @@ export * from './services/quran.service';
 export * from './services/subscriber.service';
 export * from './services/pause.service';
 export * from './services/delivery.service';
-export * from './services/cron-run.service';
 
 // Reference data
 export * from './reference/surahs';
