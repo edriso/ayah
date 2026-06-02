@@ -27,8 +27,8 @@ importers:
         specifier: ^4.2.1
         version: 4.2.1
       telegram-bot-kit:
-        specifier: github:edriso/telegram-bot-kit#v0.1.0
-        version: https://codeload.github.com/edriso/telegram-bot-kit/tar.gz/f9fd8a137bc953b75a12f51881ff5627d7c0347a(grammy@1.43.0)
+        specifier: github:edriso/telegram-bot-kit#v0.1.1
+        version: https://codeload.github.com/edriso/telegram-bot-kit/tar.gz/fc9ec2354b7af1102cab06cd1e62b987421c12b6(grammy@1.43.0)
       tsx:
         specifier: ^4.19.2
         version: 4.22.3
@@ -1617,9 +1617,9 @@ packages:
     resolution: {integrity: sha512-eNRKgb3z66Yp3D2CixVujOUvXLFUTij/zVnV8KRyvFdQwpz7I5DS8UfRkTeLzb64u+dkzDSdelE24izu+zSSUg==}
     engines: {node: ^14.18.0 || >=16.0.0}
 
-  telegram-bot-kit@https://codeload.github.com/edriso/telegram-bot-kit/tar.gz/f9fd8a137bc953b75a12f51881ff5627d7c0347a:
-    resolution: {tarball: https://codeload.github.com/edriso/telegram-bot-kit/tar.gz/f9fd8a137bc953b75a12f51881ff5627d7c0347a}
-    version: 0.1.0
+  telegram-bot-kit@https://codeload.github.com/edriso/telegram-bot-kit/tar.gz/fc9ec2354b7af1102cab06cd1e62b987421c12b6:
+    resolution: {tarball: https://codeload.github.com/edriso/telegram-bot-kit/tar.gz/fc9ec2354b7af1102cab06cd1e62b987421c12b6}
+    version: 0.1.1
     engines: {node: '>=20.0.0'}
     peerDependencies:
       grammy: ^1.42.0
@@ -3139,7 +3139,7 @@ snapshots:
     dependencies:
       '@pkgr/core': 0.3.6
 
-  telegram-bot-kit@https://codeload.github.com/edriso/telegram-bot-kit/tar.gz/f9fd8a137bc953b75a12f51881ff5627d7c0347a(grammy@1.43.0):
+  telegram-bot-kit@https://codeload.github.com/edriso/telegram-bot-kit/tar.gz/fc9ec2354b7af1102cab06cd1e62b987421c12b6(grammy@1.43.0):
     dependencies:
       dotenv: 17.4.2
       grammy: 1.43.0
