@@ -4,10 +4,15 @@ Ready-to-paste text for setting up @AyahHifzBot in @BotFather (the
 `/mybots` -> Edit Bot menu). The bot UI is Arabic, so the public texts are
 Arabic too. Copy each block as-is.
 
-Note: the bot already sets its command list automatically on every start
-(via `setMyCommands` in `src/bot.ts`). You only need to paste
-the commands into BotFather if you also want them set there by hand, or if
-the bot is not running yet. Keep the two lists in sync if you change either.
+Note: the bot already sets its command list, its **About** (short
+description) and its **Description** automatically on every start (via
+`setMyCommands`, `setMyShortDescription` and `setMyDescription` in
+`setBotProfile` in `src/bot.ts`; the About/Description text lives in
+`COPY.botAbout` / `COPY.botDescription` in `src/lib/copy.ts`). You only need
+to paste any of this into BotFather if you also want it set there by hand, or
+if the bot is not running yet. Keep the two copies in sync if you change
+either. The **Name**, profile photo, and description picture cannot be set via
+the Bot API, so those still go in BotFather by hand (see below).
 
 ---
 

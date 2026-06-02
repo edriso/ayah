@@ -256,4 +256,20 @@ export const COPY = {
     count === 0
       ? 'تم إيقاف المراجعة. ستصلك آية اليوم فقط ✅'
       : `تم ضبط المراجعة على ${reviewSummaryAr(count)} ✅`,
+
+  // The bot's About (short description, ≤120 chars) and Description (≤512
+  // chars), set on startup via the Bot API so the profile and empty-chat start
+  // screen describe the bot without a manual @BotFather step. Mirrors the doc
+  // text in docs/BOTFATHER.md (## About / ## Description); keep them in sync.
+  botAbout:
+    'احفظ القرآن آيةً آية 🌿 تصلك آية كل يوم مع آيات للمراجعة، في الوقت والأيام التي تختارها. اضغط Start للبدء.',
+  botDescription: [
+    'السلام عليكم ورحمة الله 🌿',
+    'بوت "آية" يعينك على حفظ القرآن الكريم بخطوات صغيرة ثابتة:',
+    '• تصلك كل يوم آية جديدة للحفظ، ومعها آيات سابقة من نفس السورة للمراجعة.',
+    '• تختار السورة التي تبدأ بها، والترتيب: من الناس (منهج الحفظ) أو من الفاتحة (ترتيب المصحف).',
+    '• تختار وقت الإرسال والأيام التي تناسبك.',
+    '• يمكنك أخذ راحة وقتما تشاء، وتعود من حيث توقفت.',
+    'اضغط Start للبدء بإذن الله.',
+  ].join('\n'),
 };

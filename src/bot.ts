@@ -667,7 +667,7 @@ bot.catch((err) => {
   logger.error('Bot error', { error: String(err.error), update: err.ctx.update.update_id });
 });
 
-async function setBotCommands() {
+async function setBotProfile() {
   // The visible menu stays small. /break and /resume still work as aliases
   // (the /pause toggle replaces them in the menu), and the picker buttons
   // cover the rest, matching the "fewer commands" goal.
@@ -683,9 +683,15 @@ async function setBotCommands() {
     { command: 'settings', description: 'عرض إعداداتك' },
     { command: 'help', description: 'المساعدة' },
   ]);
+  // Set the About (short description) and Description the same way as the
+  // commands, so the bot is self-describing on deploy — no manual @BotFather
+  // step. (The name, profile photo, and description picture cannot be set via
+  // the Bot API; those stay in @BotFather.)
+  await bot.api.setMyShortDescription(COPY.botAbout);
+  await bot.api.setMyDescription(COPY.botDescription);
 }
 
-export { bot, setBotCommands };
+export { bot, setBotProfile };
 
 // ─── Small parsing helpers ──────────────────────────────────────────
 
