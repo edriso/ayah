@@ -18,6 +18,16 @@ project, with everything under `src/`:
   daily scheduler. `prisma/` holds the schema, migrations, and seed; `scripts/`
   holds the data fetch.
 
+The cross-bot kernel lives in **`telegram-bot-kit`** (a separate public repo,
+pinned by git tag in `package.json`): the timezone/schedule math, the active-day
+bitmask, Arabic-Indic digits, the root `.env` loader, the logger, and the
+plain-text send wrapper. The matching files here (`src/core/schedule.ts`,
+`days.ts`, `arabic.ts`, `env.ts`; `src/lib/send.ts`, `logger.ts`) are one-line
+re-export shims, so existing imports of `../core` / `./send` / `./logger` keep
+working while the code lives (and is tested) once, in the kernel. To change that
+code: edit the kernel, `pnpm check`, tag a new version, and merge the Renovate
+bump PR it opens here. The tilawah bot consumes the same kernel.
+
 Read `docs/ERD.md` and `docs/DATABASE.md` before changing data or the schema.
 
 ## Golden rules
@@ -55,6 +65,12 @@ minute. For each active, non-blocked subscriber:
    transaction.
 
 One subscriber failing is caught and never stops the rest of the batch.
+
+`/today` and repositioning (`/surah` and the surah / onboarding buttons) deliver
+today's ayah the same way: they reuse `buildTodayView` + `commitDelivery`, so a
+subscriber who reads early "claims" the day (records the delivery and advances)
+and the scheduler then skips it. The same `unique(subscriber, scheduledFor)`
+lock keeps it to one ayah per local day across every entry point.
 
 ## Conventions
 
@@ -115,6 +131,9 @@ real changes go through a migration so production stays in step.
 
 ## Where things live
 
+- Shared kernel (schedule, days, arabic, env, logger, send): the
+  `telegram-bot-kit` package; the matching `src/core/*` and `src/lib/{send,logger}.ts`
+  files are re-export shims.
 - Curriculum order: `src/database/reference/curriculum.ts`
 - Surah names and revelation: `src/database/reference/surahs.ts`
 - Ayah count oracle: `src/database/reference/ayah-counts.ts`

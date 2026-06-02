@@ -77,7 +77,7 @@ refuses to write anything that does not match.
 
 ## Commands the user sees (Arabic)
 
-- `/today` show the current ayah now (does not move your position)
+- `/today` read today's ayah now (counts as today's, so it is not sent again)
 - `/time HH:MM` set the daily send time
 - `/days` pick which weekdays you receive ayat
 - `/review N` how many previous ayat to review (0 to 20, default 10)
