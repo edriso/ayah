@@ -26,6 +26,9 @@ importers:
       node-cron:
         specifier: ^4.2.1
         version: 4.2.1
+      telegram-bot-kit:
+        specifier: github:edriso/telegram-bot-kit#v0.1.0
+        version: https://codeload.github.com/edriso/telegram-bot-kit/tar.gz/f9fd8a137bc953b75a12f51881ff5627d7c0347a(grammy@1.43.0)
       tsx:
         specifier: ^4.19.2
         version: 4.22.3
@@ -1614,6 +1617,13 @@ packages:
     resolution: {integrity: sha512-eNRKgb3z66Yp3D2CixVujOUvXLFUTij/zVnV8KRyvFdQwpz7I5DS8UfRkTeLzb64u+dkzDSdelE24izu+zSSUg==}
     engines: {node: ^14.18.0 || >=16.0.0}
 
+  telegram-bot-kit@https://codeload.github.com/edriso/telegram-bot-kit/tar.gz/f9fd8a137bc953b75a12f51881ff5627d7c0347a:
+    resolution: {tarball: https://codeload.github.com/edriso/telegram-bot-kit/tar.gz/f9fd8a137bc953b75a12f51881ff5627d7c0347a}
+    version: 0.1.0
+    engines: {node: '>=20.0.0'}
+    peerDependencies:
+      grammy: ^1.42.0
+
   tinybench@2.9.0:
     resolution: {integrity: sha512-0+DUvqWMValLmha6lr4kD8iAMK1HzV0/aKnCtWb9v9641TnP/MFb7Pc2bxoxQjTXAErryXVgUOfv2YqNllqGeg==}
 
@@ -3128,6 +3138,11 @@ snapshots:
   synckit@0.11.13:
     dependencies:
       '@pkgr/core': 0.3.6
+
+  telegram-bot-kit@https://codeload.github.com/edriso/telegram-bot-kit/tar.gz/f9fd8a137bc953b75a12f51881ff5627d7c0347a(grammy@1.43.0):
+    dependencies:
+      dotenv: 17.4.2
+      grammy: 1.43.0
 
   tinybench@2.9.0: {}
 
