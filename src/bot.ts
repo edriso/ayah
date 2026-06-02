@@ -26,7 +26,7 @@ import {
 import { config } from './config';
 import { logger } from './lib/logger';
 import { COPY, settingsSummary, formatTimeAr, daysSummaryAr, orderSummaryAr } from './lib/copy';
-import { buildTodayView, previewAyah } from './lib/deliver';
+import { buildTodayView, previewAyah, type TodayView } from './lib/deliver';
 import { runDeliveryOnce } from './scheduler';
 import { buildDaysKeyboard, DAY_TOGGLE_PREFIX, DAYS_DONE } from './lib/days-keyboard';
 import { buildTimeKeyboard, TIME_PICK_PREFIX } from './lib/time-keyboard';
@@ -144,6 +144,71 @@ function isAdmin(ctx: Context): boolean {
   return ctx.from ? BigInt(ctx.from.id) === config.adminTelegramId : false;
 }
 
+/**
+ * Reply a TodayView's messages and, if it carries a claim, record it as today's
+ * delivery so the scheduler does not send the same ayah again. Shared by /today
+ * and the reposition flow. The claim is committed only AFTER the messages are
+ * shown, so a failed reply leaves the day unclaimed; the unique (subscriber,
+ * date) index makes it safe even if the scheduler races (see scheduler.ts).
+ */
+async function sendTodayView(
+  ctx: Context,
+  sub: Subscriber,
+  view: TodayView,
+  now: Date,
+): Promise<void> {
+  for (const message of view.messages) await ctx.reply(message);
+  if (view.claim) {
+    await commitDelivery({
+      subscriberId: sub.id,
+      entry: view.claim.entry,
+      scheduledFor: view.claim.scheduledFor,
+      totalEntries: view.claim.totalEntries,
+      loops: view.claim.loops,
+      startedAt: sub.startedAt,
+      now,
+    });
+  }
+}
+
+/**
+ * After the user repositions (/surah, a surah-pick button, the onboarding
+ * "start from An-Nas"), auto-send the ayah at the new position (like /today) and
+ * claim it as today's delivery so the scheduler does not also send it. `entry`
+ * is the NEW entry the position was set to (carrying its track and id). On an
+ * already-delivered / off / paused day the ayah is shown as a preview and the
+ * day's record is left untouched (buildTodayView decides).
+ */
+export async function sendAfterReposition(
+  ctx: Context,
+  sub: Subscriber,
+  entry: EntryWithAyah,
+): Promise<void> {
+  const now = new Date();
+  const view = await buildTodayView(
+    { ...sub, trackId: entry.trackId, currentEntryId: entry.id },
+    now,
+    { reposition: true },
+  );
+  if (view.messages.length === 0) {
+    logger.warn('reposition produced no ayah', { subscriberId: sub.id, entryId: entry.id });
+    await ctx.reply(COPY.brokenOrNotStarted);
+    return;
+  }
+  const { nameAr } = entry.ayah.surah;
+  const { numberInSurah } = entry.ayah;
+  // When today is still free the new ayah counts as today's delivery and the
+  // position has advanced past it; otherwise it is shown as a preview that will
+  // arrive at the next scheduled time.
+  await ctx.reply(
+    view.claim
+      ? COPY.repositionClaimed(nameAr, numberInSurah)
+      : COPY.repositionPreview(nameAr, numberInSurah),
+  );
+  await sendTodayView(ctx, sub, view, now);
+  if (sub.pausedAt) await ctx.reply(COPY.pausedHint);
+}
+
 // ─── User commands ──────────────────────────────────────────────────
 
 bot.command('start', async (ctx) => {
@@ -192,7 +257,7 @@ bot.command('surah', async (ctx) => {
     return;
   }
   await setStartPosition(sub.id, entry.id);
-  await ctx.reply(COPY.startSet(entry.ayah.surah.nameAr, entry.ayah.numberInSurah));
+  await sendAfterReposition(ctx, sub, entry);
 });
 
 // /order: choose the memorization order (forward Mushaf or reverse hifz).
@@ -239,18 +304,7 @@ bot.command('today', async (ctx) => {
     return;
   }
   if (view.alreadyDelivered) await ctx.reply(COPY.todayAlready);
-  for (const message of view.messages) await ctx.reply(message);
-  if (view.claim) {
-    await commitDelivery({
-      subscriberId: sub.id,
-      entry: view.claim.entry,
-      scheduledFor: view.claim.scheduledFor,
-      totalEntries: view.claim.totalEntries,
-      loops: view.claim.loops,
-      startedAt: sub.startedAt,
-      now,
-    });
-  }
+  await sendTodayView(ctx, sub, view, now);
   // Remind a paused user of their state, since /today works while paused.
   if (sub.pausedAt) await ctx.reply(COPY.pausedHint);
 });
@@ -422,8 +476,8 @@ bot.callbackQuery(ONBOARD_DEFAULT, async (ctx) => {
   }
   const entry = await applyOrderAtStart(sub.id, KIDS_TRACK.key);
   await ctx.editMessageReplyMarkup(); // remove the keyboard
-  await ctx.reply(COPY.startSet(entry.ayah.surah.nameAr, entry.ayah.numberInSurah));
   await ctx.answerCallbackQuery();
+  await sendAfterReposition(ctx, sub, entry);
 });
 
 // "Pick a starting surah": open the surah picker in place. Also reached from
@@ -479,8 +533,8 @@ bot.callbackQuery(new RegExp(`^${SURAH_PICK_PREFIX}(\\d+)$`), async (ctx) => {
   }
   await setStartPosition(sub.id, entry.id);
   await ctx.editMessageReplyMarkup(); // remove the keyboard
-  await ctx.reply(COPY.startSet(entry.ayah.surah.nameAr, entry.ayah.numberInSurah));
   await ctx.answerCallbackQuery();
+  await sendAfterReposition(ctx, sub, entry);
 });
 
 // ─── Order-picker buttons ───────────────────────────────────────────

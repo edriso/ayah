@@ -118,4 +118,26 @@ describe('buildTodayView (/today claims today)', () => {
     expect(view.messages).toEqual([]);
     expect(view.claim).toBeNull();
   });
+
+  it('reposition shows the current entry and claims when today is still free', async () => {
+    const view = await buildTodayView(todaySub(), NOW, { reposition: true });
+    expect(view.messages.length).toBeGreaterThan(0);
+    expect(view.claim).toEqual({
+      scheduledFor: '2026-06-01',
+      entry: ENTRY,
+      totalEntries: 6236,
+      loops: true,
+    });
+    expect(h.resolveTargetEntry).toHaveBeenCalled();
+  });
+
+  it('reposition on an already-delivered day shows the new entry (preview), no claim', async () => {
+    h.getDeliveryFor.mockResolvedValue({ trackEntryId: 7 });
+    const view = await buildTodayView(todaySub(), NOW, { reposition: true });
+    expect(view.claim).toBeNull();
+    expect(view.messages.length).toBeGreaterThan(0);
+    // Shows the just-set position, not the earlier delivered re-show.
+    expect(h.resolveTargetEntry).toHaveBeenCalled();
+    expect(h.getEntryById).not.toHaveBeenCalled();
+  });
 });

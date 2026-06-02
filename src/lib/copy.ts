@@ -191,12 +191,14 @@ export const COPY = {
   surahInvalid:
     'تعذّر فهم ذلك. اكتب رقم السورة من ١ إلى ١١٤، ويمكنك إضافة رقم الآية بعده.\n' +
     `مثل ${ltr('/surah 67 5')}`,
-  startSet: (surahNameAr: string, numberInSurah: number) =>
-    [
-      `تم ✅ ستبدأ من ${positionSummaryAr(surahNameAr, numberInSurah)}.`,
-      'لرؤيتها الآن اضغط /today',
-      `لتبدأ من آية معيّنة اكتب رقم السورة ورقم الآية، مثل ${ltr('/surah 67 5')}`,
-    ].join('\n'),
+  // After a reposition on a free day: the chosen ayah counts as today's, and
+  // the position has advanced past it (so /settings shows the NEXT ayah).
+  repositionClaimed: (surahNameAr: string, numberInSurah: number) =>
+    `موضعك الآن ${positionSummaryAr(surahNameAr, numberInSurah)}، وهذه آية اليوم 🌿\nوالتالية تصلك في موعدك المحدد بإذن الله.`,
+  // After a reposition when today is already delivered, an off day, or paused:
+  // the ayah is shown as a preview and will arrive at the next scheduled time.
+  repositionPreview: (surahNameAr: string, numberInSurah: number) =>
+    `موضعك الآن ${positionSummaryAr(surahNameAr, numberInSurah)} ✅\nوستصلك في موعدك المحدد بإذن الله.`,
 
   // Order copy.
   orderPrompt: 'اختر ترتيب الحفظ:',

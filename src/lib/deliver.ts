@@ -152,27 +152,37 @@ export interface TodaySubscriber {
  * On an off day or while paused there is no scheduled send to dedupe against,
  * so /today stays a pure peek that never advances.
  */
-export async function buildTodayView(sub: TodaySubscriber, now: Date): Promise<TodayView> {
+export async function buildTodayView(
+  sub: TodaySubscriber,
+  now: Date,
+  opts: { reposition?: boolean } = {},
+): Promise<TodayView> {
   const local = getLocalContext(sub.timezone, now);
   const scheduledFor = local.date;
-
-  // Already delivered today: re-show exactly that ayah, never claim/advance.
   const delivered = await getDeliveryFor(sub.id, scheduledFor);
-  if (delivered) {
+
+  // /today on an already-delivered day re-shows exactly that ayah. A reposition
+  // (/surah, a surah-pick button, onboarding) instead always shows the NEW ayah
+  // the user just chose, so it skips this re-show and renders it below.
+  if (delivered && !opts.reposition) {
     const entry = await getEntryById(delivered.trackEntryId);
     if (!entry) return { messages: [], claim: null, alreadyDelivered: true };
     const content = await buildDailyContent(entry, sub.reviewCount);
     return { messages: formatDailyMessages(content), claim: null, alreadyDelivered: true };
   }
 
-  // Not delivered yet: show the current ayah (or the first, if not started).
+  // Show the current ayah (or the first, if not started).
   const entry = await resolveTargetEntry(sub);
-  if (!entry) return { messages: [], claim: null, alreadyDelivered: false };
+  if (!entry) return { messages: [], claim: null, alreadyDelivered: delivered !== null };
   const content = await buildDailyContent(entry, sub.reviewCount);
   const messages = formatDailyMessages(content);
 
-  // Claim it as today's delivery, unless paused or it is not an active day.
-  const claimable = sub.pausedAt === null && isDayActive(sub.activeDays, local.isoWeekday);
+  // Claim it as today's delivery only when today is genuinely free: not already
+  // delivered, an active day, and not paused. A reposition on an
+  // already-delivered (or off / paused) day just shows the new ayah as a
+  // preview and leaves today's record and the position untouched.
+  const claimable =
+    delivered === null && sub.pausedAt === null && isDayActive(sub.activeDays, local.isoWeekday);
   let claim: TodayView['claim'] = null;
   if (claimable) {
     const track = await getTrackById(sub.trackId);
@@ -183,7 +193,7 @@ export async function buildTodayView(sub: TodaySubscriber, now: Date): Promise<T
       loops: track?.loops ?? false,
     };
   }
-  return { messages, claim, alreadyDelivered: false };
+  return { messages, claim, alreadyDelivered: delivered !== null };
 }
 
 /**
