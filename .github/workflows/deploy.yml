@@ -1,6 +1,8 @@
-# Push-to-deploy: on every push to main, first run the checks (typecheck, lint,
-# tests); only if they pass do we SSH into the VPS, pull the latest code, run
-# the DB migrations + seed, then rebuild this bot's container.
+# CI + push-to-deploy. The `test` job (typecheck, lint, tests) runs on every
+# push to main AND on every pull request to main, so dependency-bump PRs (e.g.
+# Renovate bumping telegram-bot-kit) show a green/red check before merge. The
+# `deploy` job runs ONLY on a push to main: it SSHes into the VPS, pulls the
+# latest code, runs the DB migrations + seed, then rebuilds this bot's container.
 #
 # ayah needs a database (the shared MariaDB). The `ayah-migrate` one-off compose
 # service runs `pnpm db:deploy && pnpm db:seed`. Both are idempotent: db:deploy
@@ -22,11 +24,13 @@ name: deploy
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
 
 jobs:
   # Gate: typecheck + lint + tests must pass before we touch production. A push
   # that breaks the build never reaches the server (it would otherwise fail to
-  # boot or misbehave with no warning).
+  # boot or misbehave with no warning). Also runs on PRs so bump PRs are checked.
   test:
     runs-on: ubuntu-latest
     # Dummy values so `prisma generate` (postinstall) and any config import do
@@ -48,6 +52,8 @@ jobs:
 
   deploy:
     needs: test
+    # Only deploy on a real push to main, never on a pull request.
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - name: Deploy over SSH
