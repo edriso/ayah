@@ -14,6 +14,7 @@ import {
   getEntryForAyah,
   getEntryAtPosition,
   getProgressView,
+  countDeliveries,
   getTrackByKey,
   ORDERS,
   KIDS_TRACK,
@@ -26,7 +27,12 @@ import {
 import { config } from './config';
 import { logger } from './lib/logger';
 import { COPY, settingsSummary, formatTimeAr, daysSummaryAr, orderSummaryAr } from './lib/copy';
-import { buildTodayView, previewAyah, type TodayView } from './lib/deliver';
+import { buildTodayView, buildCompletionMessage, previewAyah, type TodayView } from './lib/deliver';
+import {
+  COMPLETE_CONTINUE,
+  COMPLETE_PICK,
+  COMPLETE_RESTART_PREFIX,
+} from './lib/completion-keyboard';
 import { runDeliveryOnce } from './scheduler';
 import { buildDaysKeyboard, DAY_TOGGLE_PREFIX, DAYS_DONE } from './lib/days-keyboard';
 import { buildTimeKeyboard, TIME_PICK_PREFIX } from './lib/time-keyboard';
@@ -75,13 +81,21 @@ function ignoreNotModified(err: unknown): void {
 /** The settings summary for a subscriber, enriched with their current
  *  position (surah + ayah) and order, both fetched from the track. */
 async function settingsText(sub: Subscriber): Promise<string> {
-  const progress = await getProgressView(sub);
+  const [progress, deliveredCount] = await Promise.all([
+    getProgressView(sub),
+    countDeliveries(sub.id),
+  ]);
   return settingsSummary({
     ...sub,
     position: progress
-      ? { surahNameAr: progress.surahNameAr, numberInSurah: progress.numberInSurah }
+      ? {
+          surahNameAr: progress.surahNameAr,
+          numberInSurah: progress.numberInSurah,
+          surahAyahCount: progress.surahAyahCount,
+        }
       : undefined,
     orderKey: progress?.orderKey,
+    deliveredCount,
   });
 }
 
@@ -159,7 +173,7 @@ async function sendTodayView(
 ): Promise<void> {
   for (const message of view.messages) await ctx.reply(message);
   if (view.claim) {
-    await commitDelivery({
+    const committed = await commitDelivery({
       subscriberId: sub.id,
       entry: view.claim.entry,
       scheduledFor: view.claim.scheduledFor,
@@ -168,6 +182,18 @@ async function sendTodayView(
       startedAt: sub.startedAt,
       now,
     });
+    // Celebrate only on a real advance. If commitDelivery returned 'duplicate'
+    // (the scheduler raced in and delivered the same day first) the position
+    // did NOT advance here, so a milestone would be a spurious second one.
+    if (committed === 'sent') {
+      const completion = await buildCompletionMessage(
+        view.claim.entry,
+        view.claim.totalEntries,
+        view.claim.loops,
+        sub.id,
+      );
+      if (completion) await ctx.reply(completion.text, { reply_markup: completion.keyboard });
+    }
   }
 }
 
@@ -575,6 +601,48 @@ bot.callbackQuery(new RegExp(`^${ORDER_PICK_PREFIX}(.+)$`), async (ctx) => {
   await setOrder(sub.id, track.id, newEntryId);
   await ctx.editMessageReplyMarkup(); // remove the keyboard
   await ctx.reply(COPY.orderSet(key));
+  await ctx.answerCallbackQuery();
+});
+
+// ─── Surah-completion buttons ───────────────────────────────────────
+// Shown under the milestone message when a subscriber finishes a surah. The
+// bot already auto-continues to the next surah, so these only let them change
+// course without ever blocking the daily send.
+
+// "Continue": nothing to do (the position already advanced); just reassure and
+// drop the keyboard so it cannot be tapped again.
+bot.callbackQuery(COMPLETE_CONTINUE, async (ctx) => {
+  await ctx.editMessageReplyMarkup().catch(ignoreNotModified);
+  await ctx.answerCallbackQuery({ text: COPY.completionContinueAck });
+});
+
+// "Pick another surah": open the surah picker in place, reusing the normal
+// surah-pick flow (its button handler repositions and previews).
+bot.callbackQuery(COMPLETE_PICK, async (ctx) => {
+  await ctx
+    .editMessageText(COPY.surahPrompt, { reply_markup: buildSurahKeyboard(SURAHS) })
+    .catch(ignoreNotModified);
+  await ctx.answerCallbackQuery();
+});
+
+// "Repeat this surah": point back at ayah 1 of the surah just finished, in the
+// subscriber's current order. Today's ayah was already delivered, so we do not
+// re-send now; the first ayah arrives at the next scheduled time.
+bot.callbackQuery(new RegExp(`^${COMPLETE_RESTART_PREFIX}(\\d+)$`), async (ctx) => {
+  const sub = await subscriberFor(ctx);
+  if (!sub) {
+    await ctx.answerCallbackQuery();
+    return;
+  }
+  const surah = Number(ctx.match![1]);
+  const entry = await getEntryForAyah(sub.trackId, surah, 1);
+  if (!entry) {
+    await ctx.answerCallbackQuery();
+    return;
+  }
+  await setStartPosition(sub.id, entry.id);
+  await ctx.editMessageReplyMarkup().catch(ignoreNotModified); // drop the keyboard
+  await ctx.reply(COPY.completionRestarted(entry.ayah.surah.nameAr));
   await ctx.answerCallbackQuery();
 });
 

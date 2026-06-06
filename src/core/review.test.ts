@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   reviewRange,
   advancePosition,
+  isSurahComplete,
   clampReviewCount,
   DEFAULT_REVIEW_COUNT,
   MAX_REVIEW_COUNT,
@@ -56,6 +57,22 @@ describe('clampReviewCount', () => {
     expect(clampReviewCount(999)).toBe(MAX_REVIEW_COUNT);
     expect(clampReviewCount(7.9)).toBe(7);
     expect(clampReviewCount(NaN)).toBe(DEFAULT_REVIEW_COUNT);
+  });
+});
+
+describe('isSurahComplete', () => {
+  it('is true only on the surah’s last ayah', () => {
+    // Al-Ikhlas has 4 ayat.
+    expect(isSurahComplete(3, 4)).toBe(false);
+    expect(isSurahComplete(4, 4)).toBe(true);
+  });
+
+  it('treats an out-of-range ayah past the end as complete (defensive)', () => {
+    expect(isSurahComplete(5, 4)).toBe(true);
+  });
+
+  it('rejects a non-positive surah length', () => {
+    expect(() => isSurahComplete(1, 0)).toThrow();
   });
 });
 

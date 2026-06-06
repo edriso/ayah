@@ -54,6 +54,19 @@ export function reviewRange(
 }
 
 /**
+ * True when this ayah is the last one of its surah, i.e. delivering it
+ * completes the surah. `surahAyahCount` is the surah's total number of ayat
+ * (the oracle the data is seeded against). Pure so the boundary signal that
+ * drives the "you finished a surah" message is unit-tested without a database.
+ */
+export function isSurahComplete(numberInSurah: number, surahAyahCount: number): boolean {
+  if (!Number.isInteger(surahAyahCount) || surahAyahCount < 1) {
+    throw new Error(`surahAyahCount must be >= 1, got ${surahAyahCount}`);
+  }
+  return numberInSurah >= surahAyahCount;
+}
+
+/**
  * Work out the next position in the track.
  *
  * Positions are 0-based and packed tight (0, 1, 2, ... total-1).

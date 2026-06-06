@@ -89,7 +89,7 @@ export function formatDailyMessages(input: DailyMessageInput): string[] {
   // The reading instruction only makes sense when there is something to read
   // up to today; on a lone ayah we drop it (and the 👉, which would point at
   // the only line).
-  const header = hasReview ? `${title}\n\n📖 اقرأ بالترتيب حتى آية اليوم:` : title;
+  const header = hasReview ? `${title}\n\n📖 راجع واحفظ بالترتيب حتى آية اليوم:` : title;
 
   // The passage body, top to bottom: the surah opening (only when this passage
   // truly starts at ayah 1), the previous ayat ascending, then today's ayah
@@ -112,8 +112,8 @@ export function formatDailyMessages(input: DailyMessageInput): string[] {
 /**
  * Pack passage lines into messages no longer than `limit`. The first message
  * carries `firstHeader`; later messages carry the continuation header. A
- * single line always fits (the longest ayah is far under the limit), so a line
- * is never split mid-ayah.
+ * single ayah line always fits (the longest ayah is far under the limit), so an
+ * ayah is normally never split mid-text.
  */
 function chunkPassage(firstHeader: string, lines: string[], limit: number): string[] {
   const messages: string[] = [];
@@ -126,11 +126,44 @@ function chunkPassage(firstHeader: string, lines: string[], limit: number): stri
     body = [];
   };
 
+  // Room a line gets once the header and its "\n\n" are accounted for. Measured
+  // against the FIRST (longest) header so any piece is guaranteed to fit under
+  // the shorter continuation header too.
+  const room = Math.max(1, limit - firstHeader.length - 2);
+
   for (const line of lines) {
-    const trial = `${head}\n\n${[...body, line].join('\n')}`;
-    if (body.length > 0 && trial.length > limit) flush();
-    body.push(line);
+    // Defensive: a real ayah is far under the limit, so this split never
+    // triggers in practice. But if a single line ever exceeded the limit
+    // (corrupt data, a much larger future header), emitting it whole would make
+    // Telegram reject the whole message with a 400 — and a failed send is
+    // retried forever, leaving the user stuck with no ayah. Hard-splitting
+    // (between words where possible) keeps the delivery flowing.
+    const pieces = line.length > room ? splitLongLine(line, room) : [line];
+    for (const piece of pieces) {
+      const trial = `${head}\n\n${[...body, piece].join('\n')}`;
+      if (body.length > 0 && trial.length > limit) flush();
+      body.push(piece);
+    }
   }
   if (body.length > 0) flush();
   return messages;
+}
+
+/**
+ * Last-resort splitter for a single line that is itself longer than the room a
+ * message leaves. Breaks at the last space within the window so words stay
+ * whole; falls back to a hard cut when there is no space. Only ever reached by
+ * the defensive guard in chunkPassage — no real ayah is this long.
+ */
+function splitLongLine(line: string, max: number): string[] {
+  const pieces: string[] = [];
+  let rest = line;
+  while (rest.length > max) {
+    let cut = rest.lastIndexOf(' ', max);
+    if (cut <= 0) cut = max; // no space in the window: hard cut
+    pieces.push(rest.slice(0, cut).trimEnd());
+    rest = rest.slice(cut).trimStart();
+  }
+  if (rest.length > 0) pieces.push(rest);
+  return pieces;
 }

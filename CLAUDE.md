@@ -72,6 +72,22 @@ subscriber who reads early "claims" the day (records the delivery and advances)
 and the scheduler then skips it. The same `unique(subscriber, scheduledFor)`
 lock keeps it to one ayah per local day across every entry point.
 
+When a delivered ayah is the LAST of its surah, the bot follows it with a
+milestone message (`surahCompletionFor` decides this, `buildCompletionMessage`
+renders it) naming the next surah, with buttons to continue / pick another /
+repeat the surah. It is a non-blocking celebration: the position has already
+advanced to the next surah, so doing nothing simply continues. Finishing the
+track's final entry says "you completed the whole Quran" instead — but only once
+a full track's worth of ayat has actually been delivered (a `DeliveryLog`
+count), so picking a surah near the order's end can't trigger a false khatma.
+The milestone is sent only after a real `commitDelivery` ('sent', not
+'duplicate'), so the /today-vs-scheduler race never double-celebrates. A long surah
+is never re-sent from its start: the review block is always the last N ayat
+(`reviewCount`, 0–20), clamped so it never crosses into the previous surah. The
+formatter (`src/core/format.ts`) splits a passage across messages at ayah
+boundaries when it exceeds Telegram's limit; the longest single ayah
+(Al-Baqarah 2:282, ~1173 chars) is well within one message.
+
 ## Conventions
 
 - TypeScript, ESM, strict mode.

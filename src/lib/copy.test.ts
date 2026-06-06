@@ -7,6 +7,7 @@ import {
   formatTimeAr,
   orderSummaryAr,
   positionSummaryAr,
+  ayatCountAr,
   ltr,
 } from './copy';
 
@@ -85,11 +86,17 @@ describe('settingsSummary status line', () => {
   it('shows the current position and order when provided', () => {
     const summary = settingsSummary({
       ...base,
-      position: { surahNameAr: 'الملك', numberInSurah: 5 },
+      position: { surahNameAr: 'الملك', numberInSurah: 5, surahAyahCount: 30 },
       orderKey: 'mushaf',
     });
-    expect(summary).toContain('• الموضع: سورة الملك، آية ٥');
+    expect(summary).toContain('• الموضع: سورة الملك، آية ٥ من ٣٠');
     expect(summary).toContain('• الترتيب: ترتيب المصحف (من الفاتحة)');
+  });
+
+  it('shows a delivered-ayat progress line, and hides it at zero', () => {
+    expect(settingsSummary({ ...base, deliveredCount: 42 })).toContain('• ما حفظته معنا: ٤٢ آية');
+    expect(settingsSummary({ ...base, deliveredCount: 0 })).not.toContain('ما حفظته معنا');
+    expect(settingsSummary(base)).not.toContain('ما حفظته معنا');
   });
 });
 
@@ -103,5 +110,20 @@ describe('orderSummaryAr / positionSummaryAr', () => {
   it('renders a position with Arabic-Indic digits', () => {
     expect(positionSummaryAr('الفاتحة', 1)).toBe('سورة الفاتحة، آية ١');
     expect(positionSummaryAr('البقرة', 25)).toBe('سورة البقرة، آية ٢٥');
+  });
+
+  it('adds the surah total when given ("ayah N of M")', () => {
+    expect(positionSummaryAr('الملك', 5, 30)).toBe('سورة الملك، آية ٥ من ٣٠');
+  });
+});
+
+describe('ayatCountAr (number-noun agreement)', () => {
+  it('uses the right form for 1, 2, 3-10, and 11+', () => {
+    expect(ayatCountAr(1)).toBe('آية واحدة');
+    expect(ayatCountAr(2)).toBe('آيتان');
+    expect(ayatCountAr(3)).toBe('٣ آيات');
+    expect(ayatCountAr(10)).toBe('١٠ آيات');
+    expect(ayatCountAr(11)).toBe('١١ آية');
+    expect(ayatCountAr(286)).toBe('٢٨٦ آية');
   });
 });

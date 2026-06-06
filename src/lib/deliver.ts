@@ -1,4 +1,4 @@
-import type { Bot, Context } from 'grammy';
+import type { Bot, Context, InlineKeyboard } from 'grammy';
 import { dueLocalDate, formatDailyMessages, getLocalContext, isDayActive } from '../core';
 import {
   listDeliverableSubscribers,
@@ -7,6 +7,7 @@ import {
   resolveTargetEntry,
   commitDelivery,
   buildDailyContent,
+  surahCompletionFor,
   countTrackEntries,
   getEntryById,
   getTrackById,
@@ -18,6 +19,8 @@ import {
   type EntryWithAyah,
 } from '../database';
 import { sendMessages } from './send';
+import { buildCompletionKeyboard } from './completion-keyboard';
+import { COPY } from './copy';
 import { logger } from './logger';
 
 export interface DeliveryStats {
@@ -94,8 +97,30 @@ export async function deliverDueSubscribers(
         startedAt: sub.startedAt,
         now,
       });
-      if (committed === 'sent') stats.sent++;
-      else stats.skipped++; // a race delivered the same day first
+      if (committed === 'sent') {
+        stats.sent++;
+        // If today's ayah finished a surah, follow it with the milestone
+        // message + keyboard. Wrapped so a failure here never undoes the
+        // delivery (already committed) or aborts the rest of the batch.
+        try {
+          const completion = await buildCompletionMessage(
+            entry,
+            await totalFor(sub.trackId),
+            sub.track.loops,
+            sub.id,
+          );
+          if (completion) {
+            await bot.api.sendMessage(Number(sub.telegramId), completion.text, {
+              reply_markup: completion.keyboard,
+            });
+          }
+        } catch (err) {
+          logger.error('Failed to send surah-completion message', {
+            id: sub.id,
+            error: String(err),
+          });
+        }
+      } else stats.skipped++; // a race delivered the same day first
     } catch (err) {
       stats.failed++;
       logger.error('Delivery failed for subscriber', { id: sub.id, error: String(err) });
@@ -216,6 +241,32 @@ export async function previewAyah(
   if (!entry) return [];
   const content = await buildDailyContent(entry, reviewCount);
   return formatDailyMessages(content);
+}
+
+/** The surah-completion milestone (text + keyboard) to send after a delivery,
+ *  or null when the delivered ayah did not finish a surah. */
+export interface CompletionMessage {
+  text: string;
+  keyboard: InlineKeyboard;
+}
+
+/**
+ * Build the milestone message for a delivery, when its ayah completed a surah.
+ * Shared by the scheduler and the /today (claim) path so both celebrate the
+ * same way. Returns null on a non-boundary ayah (the common case).
+ */
+export async function buildCompletionMessage(
+  entry: EntryWithAyah,
+  totalEntries: number,
+  loops: boolean,
+  subscriberId: number,
+): Promise<CompletionMessage | null> {
+  const completion = await surahCompletionFor(entry, totalEntries, loops, subscriberId);
+  if (!completion) return null;
+  const text = completion.isQuranComplete
+    ? COPY.quranCompleted(completion.nextSurahNameAr)
+    : COPY.surahCompleted(completion.completedSurahNameAr, completion.nextSurahNameAr);
+  return { text, keyboard: buildCompletionKeyboard(completion.completedSurahNumber) };
 }
 
 /** Pull the scheduling fields the core math needs out of a subscriber row. */

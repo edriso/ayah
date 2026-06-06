@@ -87,6 +87,8 @@ export async function getProgressView(subscriber: {
   surahNumber: number;
   numberInSurah: number;
   surahNameAr: string;
+  /** The surah's total ayat, so the view can show "ayah N of M". */
+  surahAyahCount: number;
   orderKey: string;
 } | null> {
   const entry = await resolveTargetEntry(subscriber);
@@ -96,8 +98,19 @@ export async function getProgressView(subscriber: {
     surahNumber: entry.ayah.surah.number,
     numberInSurah: entry.ayah.numberInSurah,
     surahNameAr: entry.ayah.surah.nameAr,
+    surahAyahCount: entry.ayah.surah.ayahCount,
     orderKey: track?.key ?? '',
   };
+}
+
+/**
+ * How many ayat this subscriber has actually been delivered (one DeliveryLog
+ * row per local day). A correct, repositioning-proof progress number for
+ * /settings — unlike a track-position percentage, it reflects what the
+ * subscriber really received, whatever surah they started from.
+ */
+export function countDeliveries(subscriberId: number): Promise<number> {
+  return prisma.deliveryLog.count({ where: { subscriberId } });
 }
 
 export type CommitResult = 'sent' | 'duplicate';

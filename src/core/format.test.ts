@@ -37,7 +37,7 @@ describe('formatDailyMessages', () => {
     // Title names today's new ayah up front (good notification preview).
     expect(m).toContain('🌿 آية اليوم — سورة الإخلاص، آية ٤');
     // Reading instruction is present when there are previous ayat.
-    expect(m).toContain('اقرأ بالترتيب حتى آية اليوم');
+    expect(m).toContain('راجع واحفظ بالترتيب حتى آية اليوم');
     // The passage reads ascending: ﴿١﴾ before ﴿٢﴾ before … before today ﴿٤﴾.
     const order = ['﴿١﴾', '﴿٢﴾', '﴿٣﴾', '﴿٤﴾'].map((mk) => m.indexOf(mk));
     expect(order).toEqual([...order].sort((a, b) => a - b));
@@ -50,7 +50,7 @@ describe('formatDailyMessages', () => {
     const msgs = formatDailyMessages({ surah, today, review: [] });
     expect(msgs).toHaveLength(1);
     expect(msgs[0]).toContain('🌿 آية اليوم — سورة الإخلاص، آية ٤');
-    expect(msgs[0]).not.toContain('اقرأ بالترتيب');
+    expect(msgs[0]).not.toContain('راجع واحفظ بالترتيب');
     expect(msgs[0]).not.toContain('👉');
   });
 
@@ -87,5 +87,22 @@ describe('formatDailyMessages', () => {
     for (let i = 1; i <= 21; i++) {
       expect(allText.split(ayahMarker(i)).length - 1).toBe(1);
     }
+  });
+
+  it('defensively hard-splits a single line longer than the limit', () => {
+    // No real ayah is this long, but a line that alone exceeds the limit must
+    // not produce a message Telegram would reject (which would fail the whole
+    // delivery forever). The guard splits it so every message stays in bounds.
+    const huge = 'كلمة '.repeat(2000).trim(); // ~10k chars, far over the limit
+    const msgs = formatDailyMessages({
+      surah,
+      today: { numberInSurah: 1, text: huge },
+      review: [],
+    });
+    expect(msgs.length).toBeGreaterThan(1);
+    for (const m of msgs) expect(m.length).toBeLessThanOrEqual(TELEGRAM_MAX);
+    // Nothing is dropped: every word survives across the messages.
+    const wordCount = msgs.join(' ').split('كلمة').length - 1;
+    expect(wordCount).toBe(2000);
   });
 });

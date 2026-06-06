@@ -1,5 +1,11 @@
 import { prisma } from '../client';
-import { reviewRange, showsOpeningBasmala, type DailyMessageInput } from '../../core';
+import {
+  reviewRange,
+  showsOpeningBasmala,
+  advancePosition,
+  isSurahComplete,
+  type DailyMessageInput,
+} from '../../core';
 import { TOTAL_AYAT } from '../reference/ayah-counts';
 import { ORDERS } from '../reference/curriculum';
 
@@ -55,7 +61,9 @@ export function countTrackEntries(trackId: number): Promise<number> {
 }
 
 // An entry joined with its ayah and surah: everything we need to build a
-// message and to know where the subscriber is in the track.
+// message and to know where the subscriber is in the track. NOTE: the full
+// surah row is load-bearing — surahCompletionFor reads surah.ayahCount to tell
+// a surah's last ayah. If this is ever narrowed to a `select`, keep ayahCount.
 const entryInclude = {
   ayah: { include: { surah: true } },
 } as const;
@@ -145,5 +153,60 @@ export async function buildDailyContent(
     today: { numberInSurah: ayah.numberInSurah, text: ayah.text },
     review,
     basmala: showBasmala ? await getBasmala() : undefined,
+  };
+}
+
+/** What an entry's delivery completed, when its ayah is the last of its surah. */
+export interface SurahCompletion {
+  completedSurahNumber: number;
+  completedSurahNameAr: string;
+  /** The surah the subscriber continues into (where the next ayah lives), or
+   *  '' when a non-looping track has no next ayah. */
+  nextSurahNameAr: string;
+  /** True when this was the final entry of the whole track: the subscriber just
+   *  completed the entire Quran (a looping track wraps to the start; a
+   *  non-looping one ends here). */
+  isQuranComplete: boolean;
+}
+
+/**
+ * Whether delivering `entry` completes a surah, and what comes next. Returns
+ * null when the entry's ayah is NOT the last of its surah (the common case),
+ * so callers can cheaply do `if (completion)`. Drives the milestone message the
+ * subscriber gets the day they finish a surah.
+ *
+ * Uses the same `advancePosition` the real advance uses, so "what's next" here
+ * always matches where the subscriber actually lands.
+ */
+export async function surahCompletionFor(
+  entry: EntryWithAyah,
+  totalEntries: number,
+  loops: boolean,
+  subscriberId: number,
+): Promise<SurahCompletion | null> {
+  const { ayah } = entry;
+  if (!isSurahComplete(ayah.numberInSurah, ayah.surah.ayahCount)) return null;
+
+  const nextPosition = advancePosition(entry.position, totalEntries, loops);
+  const nextEntry =
+    nextPosition === null ? null : await getEntryAtPosition(entry.trackId, nextPosition);
+
+  // The whole Quran is "complete" only when the subscriber reached the track's
+  // final entry AND has actually been delivered a full track's worth of ayat.
+  // The second check matters: someone who PICKED a starting surah near the end
+  // of the order (Al-Fatihah in the reverse track, An-Nas in the Mushaf track)
+  // would otherwise hit the last position after a handful of days and get a
+  // false "you finished the whole Quran". The count only runs at the track end.
+  let isQuranComplete = false;
+  if (entry.position === totalEntries - 1) {
+    const delivered = await prisma.deliveryLog.count({ where: { subscriberId } });
+    isQuranComplete = delivered >= totalEntries;
+  }
+
+  return {
+    completedSurahNumber: ayah.surah.number,
+    completedSurahNameAr: ayah.surah.nameAr,
+    nextSurahNameAr: nextEntry ? nextEntry.ayah.surah.nameAr : '',
+    isQuranComplete,
   };
 }

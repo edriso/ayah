@@ -86,9 +86,29 @@ export function orderSummaryAr(orderKey: string): string {
   return ORDER_LABEL_AR[orderKey] ?? orderKey;
 }
 
-/** "سورة الملك، آية ٥": where the subscriber stands (or starts) now. */
-export function positionSummaryAr(surahNameAr: string, numberInSurah: number): string {
-  return `سورة ${surahNameAr}، آية ${toArabicDigits(numberInSurah)}`;
+/**
+ * "آية" with correct Arabic number-noun agreement: singular for 1, dual for 2,
+ * plural "آيات" for 3-10, singular "آية" again for 11+. Used for the count of
+ * ayat a subscriber has been delivered.
+ */
+export function ayatCountAr(count: number): string {
+  if (count === 1) return 'آية واحدة';
+  if (count === 2) return 'آيتان';
+  if (count <= 10) return `${toArabicDigits(count)} آيات`;
+  return `${toArabicDigits(count)} آية`;
+}
+
+/** "سورة الملك، آية ٥" (or "آية ٥ من ٣٠" when the surah's total is given):
+ *  where the subscriber stands (or starts) now. */
+export function positionSummaryAr(
+  surahNameAr: string,
+  numberInSurah: number,
+  surahAyahCount?: number,
+): string {
+  const ayahPart = surahAyahCount
+    ? `آية ${toArabicDigits(numberInSurah)} من ${toArabicDigits(surahAyahCount)}`
+    : `آية ${toArabicDigits(numberInSurah)}`;
+  return `سورة ${surahNameAr}، ${ayahPart}`;
 }
 
 export interface SettingsView {
@@ -100,9 +120,17 @@ export interface SettingsView {
   pausedAt: Date | null;
   // Where the subscriber stands now and in which order. Optional so pure
   // tests (and any caller without the joined entry) can omit them; when
-  // absent the two lines are simply left out.
-  position?: { surahNameAr: string; numberInSurah: number };
+  // absent the lines are simply left out. surahAyahCount and percentComplete
+  // enrich the display ("آية ٥ من ٣٠", and a progress line) when present.
+  position?: {
+    surahNameAr: string;
+    numberInSurah: number;
+    surahAyahCount?: number;
+  };
   orderKey?: string;
+  /** How many ayat the subscriber has been delivered so far (a progress line).
+   *  Omitted (or 0) hides the line. */
+  deliveredCount?: number;
 }
 
 export function settingsSummary(s: SettingsView): string {
@@ -122,9 +150,16 @@ export function settingsSummary(s: SettingsView): string {
     `• المنطقة الزمنية: ${ltr(s.timezone)}`,
   ];
   if (s.position) {
-    lines.push(`• الموضع: ${positionSummaryAr(s.position.surahNameAr, s.position.numberInSurah)}`);
+    lines.push(
+      `• الموضع: ${positionSummaryAr(
+        s.position.surahNameAr,
+        s.position.numberInSurah,
+        s.position.surahAyahCount,
+      )}`,
+    );
   }
   if (s.orderKey) lines.push(`• الترتيب: ${orderSummaryAr(s.orderKey)}`);
+  if (s.deliveredCount) lines.push(`• ما حفظته معنا: ${ayatCountAr(s.deliveredCount)} 🌿`);
   return lines.join('\n');
 }
 
@@ -199,6 +234,38 @@ export const COPY = {
   // the ayah is shown as a preview and will arrive at the next scheduled time.
   repositionPreview: (surahNameAr: string, numberInSurah: number) =>
     `موضعك الآن ${positionSummaryAr(surahNameAr, numberInSurah)} ✅\nوستصلك في موعدك المحدد بإذن الله.`,
+
+  // Surah-completion milestone: shown the day a subscriber finishes a surah,
+  // paired with the completion keyboard. The bot auto-continues to the next
+  // surah by default, so this celebrates and tells them what comes next; the
+  // buttons let them change their mind without stalling the daily habit.
+  surahCompleted: (completedNameAr: string, nextNameAr: string) =>
+    nextNameAr
+      ? [
+          `🎉 أتممت سورة ${completedNameAr}! تقبّل الله منك وبارك فيك 🌿`,
+          `وتبدأ سورة ${nextNameAr} في موعدك القادم بإذن الله.`,
+        ].join('\n')
+      : `🎉 أتممت سورة ${completedNameAr}! تقبّل الله منك وبارك فيك 🌿`,
+  // The bigger milestone: the whole Quran. nextNameAr is the surah a looping
+  // track restarts with (empty only for a non-looping track that has ended).
+  quranCompleted: (nextNameAr: string) =>
+    nextNameAr
+      ? [
+          '🎉🎉 ما شاء الله تبارك الله! لقد أتممت القرآن كاملًا 🌿',
+          'نسأل الله أن يجعله حجةً لك لا عليك، وأن يرزقك تثبيته.',
+          `وتبدأ ختمة جديدة مع سورة ${nextNameAr} في موعدك القادم بإذن الله.`,
+        ].join('\n')
+      : [
+          '🎉🎉 ما شاء الله تبارك الله! لقد أتممت القرآن كاملًا 🌿',
+          'نسأل الله أن يجعله حجةً لك لا عليك، وأن يرزقك تثبيته.',
+        ].join('\n'),
+  // Completion keyboard button labels.
+  completionContinueBtn: 'متابعة للسورة التالية ▶️',
+  completionPickBtn: '📖 اختر سورة أخرى',
+  completionRestartBtn: '🔁 أعد هذه السورة',
+  completionContinueAck: 'سنكمل في موعدك القادم بإذن الله ✅',
+  completionRestarted: (surahNameAr: string) =>
+    `سنعيد سورة ${surahNameAr} من أولها بإذن الله 🌿\nتصلك آيتها الأولى في موعدك القادم.`,
 
   // Order copy.
   orderPrompt: 'اختر ترتيب الحفظ:',

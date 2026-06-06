@@ -7,6 +7,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 const h = vi.hoisted(() => ({
   commitDelivery: vi.fn(),
   buildTodayView: vi.fn(),
+  buildCompletionMessage: vi.fn(),
 }));
 
 vi.mock('./config', () => ({
@@ -26,6 +27,7 @@ vi.mock('./database', () => ({
   getEntryForAyah: vi.fn(),
   getEntryAtPosition: vi.fn(),
   getProgressView: vi.fn(),
+  countDeliveries: vi.fn(),
   getTrackByKey: vi.fn(),
   ORDERS: [],
   KIDS_TRACK: { key: 'kids-hifz' },
@@ -33,7 +35,11 @@ vi.mock('./database', () => ({
   SURAHS: [],
   ayahCountFor: vi.fn(),
 }));
-vi.mock('./lib/deliver', () => ({ buildTodayView: h.buildTodayView, previewAyah: vi.fn() }));
+vi.mock('./lib/deliver', () => ({
+  buildTodayView: h.buildTodayView,
+  buildCompletionMessage: h.buildCompletionMessage,
+  previewAyah: vi.fn(),
+}));
 vi.mock('./scheduler', () => ({ runDeliveryOnce: vi.fn() }));
 vi.mock('./lib/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -99,5 +105,18 @@ describe('sendAfterReposition', () => {
 
     expect(h.commitDelivery).not.toHaveBeenCalled();
     expect(ctx.reply).toHaveBeenCalled();
+  });
+
+  it('does NOT celebrate when the claim lost the race (commit returned duplicate)', async () => {
+    // The scheduler delivered the same day first: commitDelivery reports
+    // 'duplicate' and the position did not advance here, so no milestone fires.
+    h.commitDelivery.mockResolvedValue('duplicate');
+    h.buildTodayView.mockResolvedValue({
+      messages: ['the ayah'],
+      claim: { scheduledFor: '2026-06-01', entry: ENTRY, totalEntries: 6236, loops: true },
+      alreadyDelivered: false,
+    });
+    await sendAfterReposition(fakeCtx() as never, SUB, ENTRY);
+    expect(h.buildCompletionMessage).not.toHaveBeenCalled();
   });
 });

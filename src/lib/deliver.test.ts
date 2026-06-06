@@ -10,6 +10,7 @@ const h = vi.hoisted(() => ({
   buildDailyContent: vi.fn(),
   countTrackEntries: vi.fn(),
   getTrackById: vi.fn(),
+  surahCompletionFor: vi.fn(),
 }));
 
 vi.mock('../database', () => ({
@@ -19,6 +20,7 @@ vi.mock('../database', () => ({
   buildDailyContent: h.buildDailyContent,
   countTrackEntries: h.countTrackEntries,
   getTrackById: h.getTrackById,
+  surahCompletionFor: h.surahCompletionFor,
   // Imported by deliver.ts but unused by buildTodayView:
   listDeliverableSubscribers: vi.fn(),
   hasDeliveryFor: vi.fn(),
@@ -33,7 +35,7 @@ vi.mock('./logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-import { buildTodayView } from './deliver';
+import { buildTodayView, buildCompletionMessage } from './deliver';
 
 // 2026-06-01 (UTC) is a Monday, ISO weekday 1.
 const NOW = new Date('2026-06-01T12:00:00Z');
@@ -139,5 +141,38 @@ describe('buildTodayView (/today claims today)', () => {
     // Shows the just-set position, not the earlier delivered re-show.
     expect(h.resolveTargetEntry).toHaveBeenCalled();
     expect(h.getEntryById).not.toHaveBeenCalled();
+  });
+});
+
+describe('buildCompletionMessage', () => {
+  it('returns null when the ayah did not finish a surah', async () => {
+    h.surahCompletionFor.mockResolvedValue(null);
+    expect(await buildCompletionMessage(ENTRY as never, 6236, true, 1)).toBeNull();
+  });
+
+  it('builds the surah milestone naming the completed and next surah', async () => {
+    h.surahCompletionFor.mockResolvedValue({
+      completedSurahNumber: 67,
+      completedSurahNameAr: 'الملك',
+      nextSurahNameAr: 'التحريم',
+      isQuranComplete: false,
+    });
+    const msg = await buildCompletionMessage(ENTRY as never, 6236, true, 1);
+    expect(msg).not.toBeNull();
+    expect(msg!.text).toContain('أتممت سورة الملك');
+    expect(msg!.text).toContain('التحريم');
+    expect(msg!.keyboard).toBeDefined();
+  });
+
+  it('uses the whole-Quran wording on the final entry', async () => {
+    h.surahCompletionFor.mockResolvedValue({
+      completedSurahNumber: 1,
+      completedSurahNameAr: 'الفاتحة',
+      nextSurahNameAr: 'الناس',
+      isQuranComplete: true,
+    });
+    const msg = await buildCompletionMessage(ENTRY as never, 6236, true, 1);
+    expect(msg!.text).toContain('أتممت القرآن كاملًا');
+    expect(msg!.text).toContain('الناس'); // a looping track restarts here
   });
 });
