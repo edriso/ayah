@@ -297,6 +297,13 @@ describe('deliverDueSubscribers (scheduler sends audio + tafseer silently)', () 
     expect(h.sendAudio).not.toHaveBeenCalled();
   });
 
+  it('does not cache a file_id when the audio send did not succeed', async () => {
+    h.sendAudio.mockResolvedValue({ result: 'failed' }); // e.g. CDN hiccup
+    const stats = await deliverDueSubscribers(bot, NOW);
+    expect(stats.sent).toBe(1); // the ayah was still delivered
+    expect(h.cacheAyahAudioId).not.toHaveBeenCalled();
+  });
+
   it('does not let an audio failure block the delivery', async () => {
     h.sendAudio.mockRejectedValue(new Error('cdn down'));
     const stats = await deliverDueSubscribers(bot, NOW);

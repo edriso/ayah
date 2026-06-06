@@ -8,6 +8,7 @@ const h = vi.hoisted(() => ({
   commitDelivery: vi.fn(),
   buildTodayView: vi.fn(),
   buildCompletionMessage: vi.fn(),
+  deliverAyahAudio: vi.fn(),
 }));
 
 vi.mock('./config', () => ({
@@ -44,7 +45,7 @@ vi.mock('./database', () => ({
 vi.mock('./lib/deliver', () => ({
   buildTodayView: h.buildTodayView,
   buildCompletionMessage: h.buildCompletionMessage,
-  deliverAyahAudio: vi.fn(),
+  deliverAyahAudio: h.deliverAyahAudio,
   previewAyah: vi.fn(),
 }));
 vi.mock('./scheduler', () => ({ runDeliveryOnce: vi.fn() }));
@@ -63,11 +64,14 @@ const ENTRY = {
 
 const SUB = {
   id: 1,
+  telegramId: 123n,
   startedAt: null,
   pausedAt: null,
   trackId: 1,
   currentEntryId: 50,
   reviewCount: 0,
+  tafseerEnabled: true,
+  reciter: 'husary-muallim',
   timezone: 'UTC',
   activeDays: 127,
 } as never;
@@ -82,9 +86,10 @@ beforeEach(() => {
 });
 
 describe('sendAfterReposition', () => {
-  it('builds the view for the NEW entry once and claims a free day', async () => {
+  it('claims a free day, then sends the audio and the (silent) tafseer', async () => {
     h.buildTodayView.mockResolvedValue({
       messages: ['the ayah'],
+      tafseer: ['📖 تفسير الآية ﴿١﴾ — التفسير الميسر\n\nالمعنى'],
       claim: { scheduledFor: '2026-06-01', entry: ENTRY, totalEntries: 6236, loops: true },
       alreadyDelivered: false,
     });
@@ -98,12 +103,26 @@ describe('sendAfterReposition', () => {
       { reposition: true },
     );
     expect(h.commitDelivery).toHaveBeenCalledTimes(1); // claimed
-    expect(ctx.reply.mock.calls.length).toBeGreaterThanOrEqual(2); // confirmation + ayah
+    // Audio goes out for the claimed entry, in the subscriber's reciter voice.
+    expect(h.deliverAyahAudio).toHaveBeenCalledTimes(1);
+    expect(h.deliverAyahAudio).toHaveBeenCalledWith(
+      expect.anything(),
+      123n,
+      ENTRY,
+      'husary-muallim',
+    );
+    // The tafseer is replied silently.
+    const tafseerReply = ctx.reply.mock.calls.find((c: unknown[]) =>
+      String(c[0]).includes('التفسير الميسر'),
+    );
+    expect(tafseerReply).toBeTruthy();
+    expect(tafseerReply![1]).toMatchObject({ disable_notification: true });
   });
 
-  it('does NOT claim on a preview (no claim in the view)', async () => {
+  it('does NOT claim, send audio, or send tafseer on a preview (no claim)', async () => {
     h.buildTodayView.mockResolvedValue({
       messages: ['the ayah'],
+      tafseer: [], // a preview carries no tafseer
       claim: null,
       alreadyDelivered: true,
     });
@@ -111,19 +130,22 @@ describe('sendAfterReposition', () => {
     await sendAfterReposition(ctx as never, SUB, ENTRY);
 
     expect(h.commitDelivery).not.toHaveBeenCalled();
-    expect(ctx.reply).toHaveBeenCalled();
+    expect(h.deliverAyahAudio).not.toHaveBeenCalled();
+    expect(ctx.reply).toHaveBeenCalled(); // the ayah preview is still shown
   });
 
-  it('does NOT celebrate when the claim lost the race (commit returned duplicate)', async () => {
+  it('does NOT celebrate, send audio, or tafseer when the claim lost the race', async () => {
     // The scheduler delivered the same day first: commitDelivery reports
-    // 'duplicate' and the position did not advance here, so no milestone fires.
+    // 'duplicate' and the position did not advance here, so nothing extra fires.
     h.commitDelivery.mockResolvedValue('duplicate');
     h.buildTodayView.mockResolvedValue({
       messages: ['the ayah'],
+      tafseer: ['📖 ...'],
       claim: { scheduledFor: '2026-06-01', entry: ENTRY, totalEntries: 6236, loops: true },
       alreadyDelivered: false,
     });
     await sendAfterReposition(fakeCtx() as never, SUB, ENTRY);
+    expect(h.deliverAyahAudio).not.toHaveBeenCalled();
     expect(h.buildCompletionMessage).not.toHaveBeenCalled();
   });
 });

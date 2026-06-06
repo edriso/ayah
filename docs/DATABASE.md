@@ -113,17 +113,23 @@ At-Tawbah (9). In the standard Hafs numbering the basmala is a numbered ayah
 only in Al-Fatihah; for other surahs it is written at the start but is not
 part of ayah 1.
 
-For correct ayah-by-ayah memorization, `fetch-quran.ts` separates the
-basmala from ayah 1 (for surahs 2 to 114, except 9) and stores the pure
-numbered ayah. The basmala bytes are taken verbatim from the source itself
-(surah 1 ayah 1), never hand-typed, and saved in the data file. The bot then
-shows the basmala as the surah opening whenever the day's passage actually
-starts at ayah 1 - that is, ayah 1 is on screen, whether it is today's ayah or
-the earliest ayah the review reaches back to - and the surah uses a basmala
-header at all (see `showsOpeningBasmala`, `surahUsesBasmala`, and
-`getBasmala`). It renders directly above ayah 1, exactly where it belongs. So
-the user always sees the full basmala in its correct place, and nothing is
-removed from the text.
+For correct ayah-by-ayah memorization, `fetch-quran.ts` separates the basmala
+from ayah 1 (for surahs 2 to 114, except 9) and stores the pure numbered ayah.
+The basmala bytes are taken verbatim from the source itself (surah 1 ayah 1),
+never hand-typed, and saved in the data file.
+
+The bot then shows the basmala as the surah opening, but only when both of
+these are true:
+
+1. The day's passage actually starts at ayah 1 — that is, ayah 1 is on screen.
+   This is true when ayah 1 is today's ayah, or when the review block reaches
+   back to ayah 1.
+2. The surah uses a basmala at all (every surah except At-Tawbah).
+
+When both hold, the basmala renders directly above ayah 1, exactly where it
+belongs. So the reader always sees the full basmala in its correct place, and
+nothing is removed from the text. The logic lives in `showsOpeningBasmala`,
+`surahUsesBasmala`, and `getBasmala`.
 
 A couple of surahs (At-Tin, Al-Qadr) carry the basmala with a slightly
 different mark, so the match is done on letters (diacritics removed) to catch

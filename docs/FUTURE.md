@@ -1,7 +1,8 @@
 # Future ideas
 
 These are planned or possible features. They are written down so the current
-design can support them later without a rewrite. None of them are built yet.
+design can support them later without a rewrite. Most are not built yet; where
+part of an idea has since shipped, it is marked "Shipped" with what is left.
 
 ## The channel bot (most wanted)
 
@@ -87,20 +88,28 @@ default. That would be a small change to where the default is read.
 
 ## Progress indicator
 
-A "how far have I come" view (e.g. a `/progress` command) is motivating for
-memorization. It is deferred on purpose: the kids track is the whole Quran
-(6236 ayat) at one ayah a day, so a raw "ayah 12 of 6236" or "0.2%" would
-discourage more than help. A good version needs a kinder framing (for example
-progress within the current surah, or "you have memorized N ayat so far") and
-should be designed before building. The data is available (`TrackEntry.position`
-and `countTrackEntries`).
+**Shipped (a first step):** `/settings` shows a kind progress line — how many
+ayat you have been delivered so far ("ما حفظته معنا: N آية"), counted from
+`DeliveryLog`, plus where you are in the current surah ("آية N من M"). See
+`getProgressView` and `countDeliveries`.
 
-## Khatma completion celebration
+What is still future: a fuller "how far have I come" view (e.g. a `/progress`
+command). We avoid a raw "ayah 12 of 6236" or "0.2%", because at one ayah a day
+the whole Quran is a very long road and that framing discourages more than it
+helps. A richer version needs a kind framing and should be designed first. The
+data is there (`TrackEntry.position` and `countTrackEntries`).
 
-When a subscriber finishes the whole Quran and the looping track wraps back to
-An-Nas, a one-time "mabrook, you completed a khatma" banner would be a lovely
-moment. It is deferred because at one ayah a day a full loop takes about 17
-years, so it is effectively unreachable today; it becomes worth building if a
-shorter track (e.g. Juz Amma only) ships. It would need a way to detect the
-wrap-around (e.g. a `khatmaCount` field or checking for a delivery of the last
-entry) so the banner shows once per khatma.
+## Surah and khatma milestones
+
+**Shipped:** the day a subscriber finishes a surah, the bot follows the ayah
+with a milestone message naming the next surah (buttons to continue, pick
+another, or repeat). Finishing the track's final entry shows a whole-Quran
+("khatma") banner instead — but only once a full track's worth of ayat has
+really been delivered, so picking a surah near the order's end can't trigger a
+false khatma. See `surahCompletionFor`, `buildCompletionMessage`, and
+`COPY.surahCompleted` / `COPY.quranCompleted`.
+
+What is still future: counting repeat khatmas. A looping track wraps back to
+An-Nas after the whole Quran, but at one ayah a day a full loop takes about 17
+years, so a per-khatma counter (e.g. a `khatmaCount` field) is only worth
+building once a shorter track — say Juz Amma only — ships.

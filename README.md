@@ -89,16 +89,19 @@ refuses to write anything that does not match.
 ## Commands the user sees (Arabic)
 
 - `/today` read today's ayah now (counts as today's, so it is not sent again)
+- `/surah` pick the surah (and ayah) you start from
+- `/order` pick the order: from An-Nas (hifz) or from Al-Fatihah (Mushaf)
 - `/time HH:MM` set the daily send time
 - `/days` pick which weekdays you receive ayat
 - `/review N` how many previous ayat to review (0 to 20, default 10)
 - `/tafsir on|off` turn the silent tafseer after the ayah on or off (default on)
 - `/reciter` pick the reciter for the silent recitation audio, or turn it off
 - `/timezone Area/City` set your timezone
-- `/break` take a break (stops sending, keeps your position)
-- `/resume` come back from a break
+- `/pause` take a break, or come back from one (one toggle command)
 - `/settings` show your current settings
 - `/help` help
+
+(`/break` and `/resume` also work, as older names for `/pause`.)
 
 Sending `/time` or `/timezone` with no argument shows tap-to-pick buttons
 (common times and cities), so a non-technical user never has to type a format

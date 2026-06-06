@@ -364,9 +364,9 @@ export const COPY = {
   settingsReciterBtn: '🎧 التلاوة (القارئ)',
 
   // The bot's About (short description, ≤120 chars) and Description (≤512
-  // chars), set on startup via the Bot API so the profile and empty-chat start
-  // screen describe the bot without a manual @BotFather step. Mirrors the doc
-  // text in docs/BOTFATHER.md (## About / ## Description); keep them in sync.
+  // chars), set on startup via the Bot API (see setBotProfile in bot.ts) so the
+  // profile and the empty-chat start screen describe the bot on their own — no
+  // manual @BotFather step. Edit them here; they go live on the next start.
   botAbout:
     'احفظ القرآن آيةً آية 🌿 تصلك آية كل يوم مع آيات للمراجعة، في الوقت والأيام التي تختارها. اضغط Start للبدء.',
   botDescription: [

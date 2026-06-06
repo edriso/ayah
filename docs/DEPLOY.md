@@ -49,10 +49,12 @@ in the public command menu, and only your id may run them):
 - `/admin_health`  uptime and current time, a quick "is it up?".
 - `/admin_send`  fire the delivery batch by hand (the exact path the cron
   uses); a smoke test right after a deploy.
-- `/admin_preview <surah> <ayah> [review]`  render exactly what the bot would
-  send for a given ayah, into your DM, without touching any subscriber. The
+- `/admin_preview <surah> <ayah> [review]`  render the ayah text (and its
+  tafseer) for a given ayah into your DM, without touching any subscriber. The
   ayah defaults to 1 and the review window to 3. Example: `/admin_preview 2
-  255 3` shows Ayat al-Kursi with three review ayat above it.
+  255 3` shows Ayat al-Kursi with three review ayat above it. It does NOT send
+  the recitation audio (that is a live send, not a text render); to test audio,
+  set a reciter with `/reciter` and use `/today`.
 
 ## With Docker
 
