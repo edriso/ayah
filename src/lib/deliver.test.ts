@@ -11,6 +11,12 @@ const h = vi.hoisted(() => ({
   countTrackEntries: vi.fn(),
   getTrackById: vi.fn(),
   surahCompletionFor: vi.fn(),
+  // Used by the scheduler path (deliverDueSubscribers).
+  listDeliverableSubscribers: vi.fn(),
+  hasDeliveryFor: vi.fn(),
+  commitDelivery: vi.fn(),
+  markBlocked: vi.fn(),
+  sendMessages: vi.fn(),
 }));
 
 vi.mock('../database', () => ({
@@ -21,21 +27,20 @@ vi.mock('../database', () => ({
   countTrackEntries: h.countTrackEntries,
   getTrackById: h.getTrackById,
   surahCompletionFor: h.surahCompletionFor,
-  // Imported by deliver.ts but unused by buildTodayView:
-  listDeliverableSubscribers: vi.fn(),
-  hasDeliveryFor: vi.fn(),
-  commitDelivery: vi.fn(),
-  markBlocked: vi.fn(),
+  listDeliverableSubscribers: h.listDeliverableSubscribers,
+  hasDeliveryFor: h.hasDeliveryFor,
+  commitDelivery: h.commitDelivery,
+  markBlocked: h.markBlocked,
   getTrackByKey: vi.fn(),
   getEntryForAyah: vi.fn(),
   KIDS_TRACK: { key: 'kids-hifz' },
 }));
-vi.mock('./send', () => ({ sendMessages: vi.fn() }));
+vi.mock('./send', () => ({ sendMessages: h.sendMessages }));
 vi.mock('./logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-import { buildTodayView, buildCompletionMessage } from './deliver';
+import { buildTodayView, buildCompletionMessage, deliverDueSubscribers } from './deliver';
 
 // 2026-06-01 (UTC) is a Monday, ISO weekday 1.
 const NOW = new Date('2026-06-01T12:00:00Z');
@@ -176,6 +181,68 @@ describe('buildTodayView tafseer (silent companion)', () => {
     const view = await buildTodayView(todaySub(), NOW);
     expect(view.alreadyDelivered).toBe(true);
     expect(view.tafseer.length).toBeGreaterThan(0);
+  });
+});
+
+describe('deliverDueSubscribers (scheduler sends tafseer silently)', () => {
+  // A minimal bot whose only job here is to record sendMessage calls.
+  const bot = { api: { sendMessage: vi.fn() } } as never;
+  const api = (bot as { api: { sendMessage: ReturnType<typeof vi.fn> } }).api;
+
+  function deliverableSub(over: Record<string, unknown> = {}) {
+    return {
+      id: 1,
+      telegramId: 123n,
+      timezone: 'UTC',
+      deliveryHour: 6, // before NOW (12:00Z) so the ayah is due
+      deliveryMinute: 0,
+      activeDays: 127,
+      reviewCount: 0,
+      tafseerEnabled: true,
+      trackId: 1,
+      startedAt: null,
+      currentEntryId: 50,
+      track: { loops: true },
+      ...over,
+    };
+  }
+
+  beforeEach(() => {
+    api.sendMessage.mockReset();
+    h.listDeliverableSubscribers.mockResolvedValue([deliverableSub()]);
+    h.hasDeliveryFor.mockResolvedValue(false);
+    h.commitDelivery.mockResolvedValue('sent');
+    h.sendMessages.mockResolvedValue('ok');
+    // No surah completion, so no milestone message muddies the assertions.
+    h.surahCompletionFor.mockResolvedValue(null);
+  });
+
+  it('sends the tafseer with disable_notification after a delivered ayah', async () => {
+    const stats = await deliverDueSubscribers(bot, NOW);
+    expect(stats.sent).toBe(1);
+    const tafseerCall = api.sendMessage.mock.calls.find((c) =>
+      String(c[1]).includes('التفسير الميسر'),
+    );
+    expect(tafseerCall).toBeTruthy();
+    expect(tafseerCall![2]).toMatchObject({ disable_notification: true });
+  });
+
+  it('does not send any tafseer when the subscriber turned it off', async () => {
+    h.listDeliverableSubscribers.mockResolvedValue([deliverableSub({ tafseerEnabled: false })]);
+    const stats = await deliverDueSubscribers(bot, NOW);
+    expect(stats.sent).toBe(1); // the ayah still goes out
+    const tafseerCall = api.sendMessage.mock.calls.find((c) =>
+      String(c[1]).includes('التفسير الميسر'),
+    );
+    expect(tafseerCall).toBeUndefined();
+  });
+
+  it('does not let a tafseer send failure block the delivery commit', async () => {
+    api.sendMessage.mockRejectedValue(new Error('boom'));
+    const stats = await deliverDueSubscribers(bot, NOW);
+    // The ayah (via sendMessages) succeeded, so the delivery is still committed.
+    expect(h.commitDelivery).toHaveBeenCalledTimes(1);
+    expect(stats.sent).toBe(1);
   });
 });
 

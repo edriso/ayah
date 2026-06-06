@@ -273,8 +273,9 @@ export async function buildTodayView(
  *
  * The default order's track (kids-hifz) is used only to resolve the ayah into
  * an entry; the rendered text depends on the ayah and the review count, not on
- * the order, so the choice of track does not affect the output. Returns an
- * empty array if that ayah is not seeded.
+ * the order, so the choice of track does not affect the output. The ayah's
+ * tafseer (if seeded) is appended, so the preview shows the full delivery the
+ * way a subscriber sees it. Returns an empty array if that ayah is not seeded.
  */
 export async function previewAyah(
   surahNumber: number,
@@ -285,7 +286,7 @@ export async function previewAyah(
   const entry = await getEntryForAyah(track.id, surahNumber, numberInSurah);
   if (!entry) return [];
   const content = await buildDailyContent(entry, reviewCount);
-  return formatDailyMessages(content);
+  return [...formatDailyMessages(content), ...tafseerMessagesFor(entry, true)];
 }
 
 /** The surah-completion milestone (text + keyboard) to send after a delivery,
