@@ -10,3 +10,4 @@ export * from './arabic';
 export * from './basmala';
 export * from './format';
 export * from './tafseer';
+export * from './audio';

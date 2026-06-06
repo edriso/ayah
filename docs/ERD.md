@@ -52,6 +52,7 @@ Subscriber (who we deliver to)
   activeDays      7-bit mask, bit 0 = Monday .. bit 6 = Sunday
   reviewCount     previous ayat to review (0..20, default 10)
   tafseerEnabled  send the ayah's tafseer (silently) after it (default true)
+  reciter         recitation-audio reciter key, or "none" (default husary-muallim)
   trackId         FK -> Track.id
   currentEntryId  FK -> TrackEntry.id, null = not started
   pausedAt        null = active, set = on a break
@@ -66,6 +67,13 @@ DeliveryLog (history + idempotency)
   status        "sent" | "failed" | "skipped"
   sentAt
   unique(subscriberId, scheduledFor)   <-- one ayah per local day
+
+AyahAudio (recitation audio file_id cache)
+  surahNumber    part of PK
+  numberInSurah  part of PK
+  reciter        part of PK (reciter key)
+  fileId         Telegram file_id, reused on later sends
+  primary key(surahNumber, numberInSurah, reciter)
 ```
 
 ## Why these choices
@@ -110,6 +118,17 @@ apart:
 
 The kids track loops, so the last case does not happen for it, but the code
 handles it for any future non-looping track.
+
+### Recitation audio is cached by file_id, not stored
+
+The daily ayah's recitation audio is large — one reciter for the whole Quran is
+about 1 GB — so we do not keep the audio in the repo or the database. The bot
+sends the CDN URL the first time an ayah is needed in a given reciter's voice,
+and stores the Telegram `file_id` it gets back in `AyahAudio`. Every later send
+of that (surah, ayah, reciter) reuses the `file_id`, so it is instant and never
+re-fetches. The table therefore holds only short id strings (at most
+6236 ayat × the offered reciters, a few MB), and fills lazily as ayat are
+delivered. See `docs/DATABASE.md` for the source and the reciter list.
 
 ## The review query
 

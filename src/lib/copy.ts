@@ -117,6 +117,9 @@ export interface SettingsView {
   activeDays: number;
   reviewCount: number;
   tafseerEnabled: boolean;
+  /** The reciter's display label (its Arabic name, or the "no recitation"
+   *  label), resolved by the caller. */
+  reciterLabel: string;
   timezone: string;
   pausedAt: Date | null;
   // Where the subscriber stands now and in which order. Optional so pure
@@ -149,6 +152,7 @@ export function settingsSummary(s: SettingsView): string {
     `• الأيام: ${daysSummaryAr(s.activeDays)}`,
     `• المراجعة: ${reviewSummaryAr(s.reviewCount)}`,
     `• التفسير: ${s.tafseerEnabled ? 'مفعّل (التفسير الميسر) 📖' : 'معطّل'}`,
+    `• التلاوة: ${s.reciterLabel}`,
     `• المنطقة الزمنية: ${ltr(s.timezone)}`,
   ];
   if (s.position) {
@@ -211,6 +215,7 @@ export const COPY = {
     '/days: اختيار أيام الإرسال',
     `/review: عدد آيات المراجعة من ٠ إلى ٢٠، مثل ${ltr('/review 5')}`,
     '/tafsir: تشغيل أو إيقاف تفسير الآية (التفسير الميسر) — يصل بصمت بعد الآية',
+    '/reciter: اختيار القارئ (تلاوة الآية صوتيًا) أو إيقافها — تصل بصمت بعد الآية',
     `/timezone: ضبط المنطقة الزمنية، مثل ${ltr('/timezone Africa/Cairo')}`,
     '/pause: أخذ راحة أو العودة منها (يبقى موضعك محفوظًا)',
     '/settings: عرض إعداداتك الحالية',
@@ -345,6 +350,19 @@ export const COPY = {
   tafsirOffBtn: '🔇 إيقاف التفسير',
   tafsirToggleAck: (enabled: boolean) => (enabled ? 'تم تفعيل التفسير 📖' : 'تم إيقاف التفسير 🔇'),
 
+  // Reciter (recitation audio) picker. The audio arrives as a silent message
+  // right after the ayah, in the chosen reciter's voice, with no notification
+  // sound. "none" turns the recitation off.
+  reciterNoneLabel: 'بدون تلاوة 🔇',
+  reciterPrompt:
+    'اختر القارئ الذي تريد أن تصلك تلاوته الصوتية بعد آية اليوم (بصمت، دون صوت تنبيه)،\n' +
+    'أو اختر «بدون تلاوة» للاكتفاء بالنص.',
+  reciterSet: (nameAr: string) =>
+    `تم اختيار التلاوة بصوت ${nameAr} ✅\nتصلك بعد آية اليوم بصمت بإذن الله.`,
+  reciterDisabled: 'تم إيقاف التلاوة الصوتية ✅ ستصلك آية اليوم نصًّا فقط.',
+  // Settings keyboard button to open the reciter picker.
+  settingsReciterBtn: '🎧 التلاوة (القارئ)',
+
   // The bot's About (short description, ≤120 chars) and Description (≤512
   // chars), set on startup via the Bot API so the profile and empty-chat start
   // screen describe the bot without a manual @BotFather step. Mirrors the doc
@@ -355,7 +373,7 @@ export const COPY = {
     'السلام عليكم ورحمة الله 🌿',
     'بوت "آية" يعينك على حفظ القرآن الكريم بخطوات صغيرة ثابتة:',
     '• تصلك كل يوم آية جديدة للحفظ، ومعها آيات سابقة من نفس السورة للمراجعة.',
-    '• ويمكن أن يصلك تفسير الآية (التفسير الميسر) بصمت بعدها، وتتحكم به بأمر /tafsir.',
+    '• ويمكن أن تصلك تلاوة الآية صوتيًا (تختار القارئ بأمر /reciter) وتفسيرها (التفسير الميسر) بصمت بعدها.',
     '• تختار السورة التي تبدأ بها، والترتيب: من الناس (منهج الحفظ) أو من الفاتحة (ترتيب المصحف).',
     '• تختار وقت الإرسال والأيام التي تناسبك.',
     '• يمكنك أخذ راحة وقتما تشاء، وتعود من حيث توقفت.',

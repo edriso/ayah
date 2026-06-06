@@ -7,12 +7,14 @@ purpose. The aim is that a junior developer can read this and be productive.
 
 Ayah is a Telegram bot that sends one Quran ayah a day to each subscriber,
 with the previous ayat of the same surah for review (a per-user count, 0-20,
-default 10). Right after the ayah it can also send that ayah's tafseer
-(التفسير الميسر) as a SILENT message (no notification sound) — on by default,
-toggled per user with `/tafsir`. Each subscriber chooses where to begin (surah
-+ ayah) and in which order to memorize: the reverse hifz order (from An-Nas,
-the default) or the forward Mushaf order (from Al-Fatihah). It is one small
-TypeScript project, with everything under `src/`:
+default 10). Right after the ayah it can also send that ayah's
+recitation audio (in a chosen reciter's voice) and its tafseer
+(التفسير الميسر), both as SILENT messages (no notification sound). The tafseer
+is on by default (`/tafsir`); the audio defaults to الحصري المعلِّم and the
+subscriber picks the reciter — or none — with `/reciter`. Each subscriber also
+chooses where to begin (surah + ayah) and in which order to memorize: the
+reverse hifz order (from An-Nas, the default) or the forward Mushaf order (from
+Al-Fatihah). It is one small TypeScript project, with everything under `src/`:
 
 - `src/core` pure logic, no database, no network. Fully unit-tested.
 - `src/database` the Prisma client and the database services.
@@ -75,11 +77,24 @@ sound), when the subscriber has tafseer on (`Subscriber.tafseerEnabled`, default
 true) and the ayah has a seeded tafseer. The tafseer is for TODAY's ayah only,
 never the review block.
 
-It is tied to the DELIVERY, not to showing the ayah: it is sent only on a real
-`commitDelivery` returning 'sent', so each ayah's tafseer arrives exactly once —
-the day that ayah is delivered. A later `/today` that just re-shows the same
-already-delivered ayah, or a peek on an off day / while paused, sends the ayah
-again but NOT the tafseer. Changing surah re-points the position; the new ayah's
+Just before the tafseer (reading order: read → hear → understand), the bot also
+sends the ayah's RECITATION AUDIO in the subscriber's chosen reciter's voice
+(`Subscriber.reciter`; "none" = off, default الحصري المعلِّم). Audio is the one
+thing NOT committed to the repo: one reciter for the whole Quran is ~1 GB, so we
+never store the bytes. Instead the bot sends the CDN URL the first time an
+(ayah, reciter) is needed and caches the Telegram file_id (`AyahAudio` table),
+reusing it on every later send — so after the first send the audio lives on
+Telegram, not the CDN. The reciters and their CDN folders are reference data
+(`src/database/reference/reciters.ts`); the URL is built by `ayahAudioUrl`
+(`src/core/audio.ts`) from `config.audioBaseUrl`. `pnpm verify:audio` checks the
+source still serves every reciter (the audio's "trusted resource" check, in
+place of a committed hashed file). See `deliverAyahAudio` in deliver.ts.
+
+Both audio and tafseer are tied to the DELIVERY, not to showing the ayah: they
+are sent only on a real `commitDelivery` returning 'sent', so each ayah's audio
+and tafseer arrive exactly once — the day that ayah is delivered. A later
+`/today` that just re-shows the same already-delivered ayah, or a peek on an off
+day / while paused, sends the ayah again but NOT the audio or tafseer. Changing surah re-points the position; the new ayah's
 tafseer then arrives the first time that ayah is actually delivered (now, if the
 reposition claims a free day; otherwise at the next scheduled send). Because both
 the scheduler and `/today` gate on the 'sent' commit, the unique
@@ -126,6 +141,7 @@ boundaries when it exceeds Telegram's limit; the longest single ayah
 pnpm install
 pnpm data:fetch         # download + verify the Quran text (once; also committed)
 pnpm data:fetch:tafseer # download + verify the tafseer (Al-Muyassar; also committed)
+pnpm verify:audio       # check the recitation-audio CDN serves every reciter
 pnpm db:deploy          # apply migrations (create tables)
 pnpm db:seed            # fill Quran tables (text + tafseer) and the tracks
 pnpm dev            # run the bot with reload
@@ -177,6 +193,10 @@ real changes go through a migration so production stays in step.
 - Tafseer text + fetch: `prisma/data/tafseer-muyassar.json` (committed),
   fetched/verified by `scripts/fetch-tafseer.ts`; seeded into `Ayah.tafseer`.
 - Tafseer message rendering: `src/core/tafseer.ts` (`formatTafseerMessages`).
+- Reciters (recitation audio): `src/database/reference/reciters.ts` (registry),
+  `src/core/audio.ts` (`ayahAudioUrl`), `src/lib/send-audio.ts` (the send
+  wrapper), `AyahAudio` (file_id cache) + `src/database/services/audio.service.ts`,
+  `deliverAyahAudio` in deliver.ts, `scripts/verify-audio.ts` (source check).
 - Curriculum order: `src/database/reference/curriculum.ts`
 - Surah names and revelation: `src/database/reference/surahs.ts`
 - Ayah count oracle: `src/database/reference/ayah-counts.ts`

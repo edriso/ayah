@@ -7,6 +7,7 @@ import {
   setTimezone,
   setReviewCount,
   setTafseerEnabled,
+  setReciter,
   pauseSubscriber,
   resumeSubscriber,
   setStartPosition,
@@ -21,6 +22,10 @@ import {
   KIDS_TRACK,
   MUSHAF_TRACK,
   SURAHS,
+  RECITERS,
+  RECITER_NONE,
+  reciterByKey,
+  isReciterChoice,
   ayahCountFor,
   type EntryWithAyah,
   type Subscriber,
@@ -28,7 +33,13 @@ import {
 import { config } from './config';
 import { logger } from './lib/logger';
 import { COPY, settingsSummary, formatTimeAr, daysSummaryAr, orderSummaryAr } from './lib/copy';
-import { buildTodayView, buildCompletionMessage, previewAyah, type TodayView } from './lib/deliver';
+import {
+  buildTodayView,
+  buildCompletionMessage,
+  deliverAyahAudio,
+  previewAyah,
+  type TodayView,
+} from './lib/deliver';
 import {
   COMPLETE_CONTINUE,
   COMPLETE_PICK,
@@ -44,6 +55,7 @@ import {
   SURAH_PAGE_PREFIX,
   SURAH_NOOP,
 } from './lib/surah-keyboard';
+import { buildReciterKeyboard, RECITER_PICK_PREFIX } from './lib/reciter-keyboard';
 import { parseTime, isValidTimezone, parseSurahArg, parseAyahPreview } from './lib/parse';
 
 const bot = new Bot<Context>(config.botToken);
@@ -56,6 +68,9 @@ const ONBOARD_MUSHAF = 'ayah:onb:mushaf';
 const ORDER_PICK_PREFIX = 'ayah:order:';
 const PAUSE_TOGGLE = 'ayah:pause:toggle';
 const TAFSEER_TOGGLE = 'ayah:tafseer:toggle';
+// Opens the reciter picker from the /settings keyboard. A distinct prefix (no
+// "ayah:reciter:" segment) so it never matches the reciter-pick handler.
+const RECITER_OPEN = 'ayah:reciter-open';
 
 // Default review window for /admin_preview when the admin does not give one.
 // Small on purpose: enough to show the review block renders, without a wall
@@ -98,7 +113,22 @@ async function settingsText(sub: Subscriber): Promise<string> {
       : undefined,
     orderKey: progress?.orderKey,
     deliveredCount,
+    reciterLabel: reciterLabelFor(sub.reciter),
   });
+}
+
+/** The Arabic label for a subscriber's reciter choice: the reciter's name, or
+ *  the "no recitation" label for "none" (or any unknown key). */
+function reciterLabelFor(reciter: string): string {
+  return reciterByKey(reciter)?.nameAr ?? COPY.reciterNoneLabel;
+}
+
+/** Set a subscriber's reciter (already validated by the caller) and reply with
+ *  the matching confirmation. Shared by /reciter and the picker buttons. */
+async function applyReciter(ctx: Context, subscriberId: number, choice: string): Promise<void> {
+  await setReciter(subscriberId, choice);
+  const reciter = reciterByKey(choice);
+  await ctx.reply(reciter ? COPY.reciterSet(reciter.nameAr) : COPY.reciterDisabled);
 }
 
 /** The small keyboard under /settings: a pause/resume toggle, a tafseer
@@ -109,7 +139,15 @@ function buildSettingsKeyboard(paused: boolean, tafseerEnabled: boolean): Inline
     .row()
     .text(tafseerEnabled ? COPY.tafsirOffBtn : COPY.tafsirOnBtn, TAFSEER_TOGGLE)
     .row()
+    .text(COPY.settingsReciterBtn, RECITER_OPEN)
+    .row()
     .text(COPY.settingsSurahBtn, ONBOARD_PICK);
+}
+
+/** The reciter picker keyboard for a subscriber, with their current choice
+ *  marked. Shared by /reciter and the /settings reciter button. */
+function buildReciterPicker(currentReciter: string): InlineKeyboard {
+  return buildReciterKeyboard(RECITERS, currentReciter, RECITER_NONE, COPY.reciterNoneLabel);
 }
 
 /** The onboarding chooser shown to a brand-new subscriber on /start. */
@@ -192,8 +230,12 @@ async function sendTodayView(
     // milestone would be a spurious duplicate. view.tafseer is itself non-empty
     // only when this view carried a claim, so a re-show or peek sends nothing.
     if (committed === 'sent') {
-      // The tafseer follows the ayah SILENTLY (no notification sound). Wrapped
-      // so a tafseer hiccup never aborts the milestone or the reply flow.
+      // In reading order, both SILENT (no notification sound): the recitation
+      // audio first, then the tafseer. Audio is best-effort inside
+      // deliverAyahAudio.
+      await deliverAyahAudio(bot, sub.telegramId, view.claim.entry, sub.reciter);
+      // The tafseer follows SILENTLY. Wrapped so a hiccup never aborts the
+      // milestone or the reply flow.
       try {
         for (const message of view.tafseer) {
           await ctx.reply(message, { disable_notification: true });
@@ -392,6 +434,21 @@ bot.command('tafsir', async (ctx) => {
   }
   await setTafseerEnabled(sub.id, on);
   await ctx.reply(COPY.tafsirUpdated(on));
+});
+
+// /reciter [key|none]: choose the reciter for the daily ayah's recitation audio
+// (sent silently after the ayah), or turn it off. With no (or an unrecognised)
+// argument, open the reciter picker. A key arg (e.g. "/reciter husary") is a
+// shortcut for power users.
+bot.command('reciter', async (ctx) => {
+  const sub = await subscriberFor(ctx);
+  if (!sub) return;
+  const arg = commandArg(ctx, 'reciter')?.toLowerCase();
+  if (arg && isReciterChoice(arg)) {
+    await applyReciter(ctx, sub.id, arg);
+    return;
+  }
+  await ctx.reply(COPY.reciterPrompt, { reply_markup: buildReciterPicker(sub.reciter) });
 });
 
 // /time: with an argument, set the time directly; with none, offer buttons.
@@ -732,6 +789,38 @@ bot.callbackQuery(TAFSEER_TOGGLE, async (ctx) => {
   await ctx.answerCallbackQuery({ text: COPY.tafsirToggleAck(enabled) });
 });
 
+// ─── Reciter picker ─────────────────────────────────────────────────
+
+// Open the reciter picker in place from the /settings keyboard.
+bot.callbackQuery(RECITER_OPEN, async (ctx) => {
+  const sub = await subscriberFor(ctx);
+  if (!sub) {
+    await ctx.answerCallbackQuery();
+    return;
+  }
+  await ctx
+    .editMessageText(COPY.reciterPrompt, { reply_markup: buildReciterPicker(sub.reciter) })
+    .catch(ignoreNotModified);
+  await ctx.answerCallbackQuery();
+});
+
+// Pick a reciter (or "none"): set it, drop the keyboard, and confirm.
+bot.callbackQuery(new RegExp(`^${RECITER_PICK_PREFIX}(.+)$`), async (ctx) => {
+  const sub = await subscriberFor(ctx);
+  if (!sub) {
+    await ctx.answerCallbackQuery();
+    return;
+  }
+  const choice = ctx.match![1];
+  if (!isReciterChoice(choice)) {
+    await ctx.answerCallbackQuery();
+    return;
+  }
+  await ctx.editMessageReplyMarkup().catch(ignoreNotModified); // remove the keyboard
+  await ctx.answerCallbackQuery();
+  await applyReciter(ctx, sub.id, choice);
+});
+
 // ─── Admin commands ─────────────────────────────────────────────────
 
 bot.command('admin_health', async (ctx) => {
@@ -808,6 +897,7 @@ async function setBotProfile() {
     { command: 'days', description: 'اختيار أيام الإرسال' },
     { command: 'review', description: 'عدد آيات المراجعة' },
     { command: 'tafsir', description: 'تشغيل أو إيقاف التفسير' },
+    { command: 'reciter', description: 'اختيار القارئ (التلاوة الصوتية)' },
     { command: 'timezone', description: 'ضبط المنطقة الزمنية' },
     { command: 'pause', description: 'أخذ راحة أو العودة منها' },
     { command: 'settings', description: 'عرض إعداداتك' },

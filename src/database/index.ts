@@ -18,8 +18,10 @@ export * from './services/quran.service';
 export * from './services/subscriber.service';
 export * from './services/pause.service';
 export * from './services/delivery.service';
+export * from './services/audio.service';
 
 // Reference data
 export * from './reference/surahs';
 export * from './reference/ayah-counts';
 export * from './reference/curriculum';
+export * from './reference/reciters';

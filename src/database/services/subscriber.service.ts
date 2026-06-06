@@ -135,6 +135,17 @@ export function setTafseerEnabled(subscriberId: number, enabled: boolean) {
 }
 
 /**
+ * Set the reciter for the daily ayah's recitation audio. `reciter` is a reciter
+ * key or "none" (no audio); the caller validates it with isReciterChoice.
+ */
+export function setReciter(subscriberId: number, reciter: string) {
+  return prisma.subscriber.update({
+    where: { id: subscriberId },
+    data: { reciter },
+  });
+}
+
+/**
  * Mark a subscriber as unreachable (they blocked the bot, or a send failed
  * with a 403). Send loops skip blocked subscribers. Cleared automatically
  * the next time they message the bot (see ensureSubscriber).

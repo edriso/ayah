@@ -19,6 +19,8 @@ vi.mock('./database', () => ({
   setDeliveryTime: vi.fn(),
   setTimezone: vi.fn(),
   setReviewCount: vi.fn(),
+  setTafseerEnabled: vi.fn(),
+  setReciter: vi.fn(),
   pauseSubscriber: vi.fn(),
   resumeSubscriber: vi.fn(),
   setStartPosition: vi.fn(),
@@ -33,11 +35,16 @@ vi.mock('./database', () => ({
   KIDS_TRACK: { key: 'kids-hifz' },
   MUSHAF_TRACK: { key: 'mushaf' },
   SURAHS: [],
+  RECITERS: [],
+  RECITER_NONE: 'none',
+  reciterByKey: vi.fn(),
+  isReciterChoice: vi.fn(),
   ayahCountFor: vi.fn(),
 }));
 vi.mock('./lib/deliver', () => ({
   buildTodayView: h.buildTodayView,
   buildCompletionMessage: h.buildCompletionMessage,
+  deliverAyahAudio: vi.fn(),
   previewAyah: vi.fn(),
 }));
 vi.mock('./scheduler', () => ({ runDeliveryOnce: vi.fn() }));

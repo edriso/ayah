@@ -60,6 +60,7 @@ describe('settingsSummary status line', () => {
     activeDays: ALL_DAYS,
     reviewCount: 10,
     tafseerEnabled: true,
+    reciterLabel: 'الحصري (المعلِّم)',
     timezone: 'Africa/Cairo',
     pausedAt: null as Date | null,
   };
@@ -71,6 +72,13 @@ describe('settingsSummary status line', () => {
   it('shows the tafseer line on or off', () => {
     expect(settingsSummary(base)).toContain('• التفسير: مفعّل');
     expect(settingsSummary({ ...base, tafseerEnabled: false })).toContain('• التفسير: معطّل');
+  });
+
+  it('shows the reciter (recitation) line', () => {
+    expect(settingsSummary(base)).toContain('• التلاوة: الحصري (المعلِّم)');
+    expect(settingsSummary({ ...base, reciterLabel: 'بدون تلاوة 🔇' })).toContain(
+      '• التلاوة: بدون تلاوة',
+    );
   });
 
   it('warns (not "working") when no days are chosen', () => {

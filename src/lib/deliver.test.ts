@@ -17,6 +17,10 @@ const h = vi.hoisted(() => ({
   commitDelivery: vi.fn(),
   markBlocked: vi.fn(),
   sendMessages: vi.fn(),
+  // Audio path.
+  getCachedAyahAudioId: vi.fn(),
+  cacheAyahAudioId: vi.fn(),
+  sendAudio: vi.fn(),
 }));
 
 vi.mock('../database', () => ({
@@ -31,11 +35,21 @@ vi.mock('../database', () => ({
   hasDeliveryFor: h.hasDeliveryFor,
   commitDelivery: h.commitDelivery,
   markBlocked: h.markBlocked,
+  getCachedAyahAudioId: h.getCachedAyahAudioId,
+  cacheAyahAudioId: h.cacheAyahAudioId,
+  // Faithful-enough reciter lookup: a real reciter for any key, undefined for
+  // the "none" sentinel (so deliverAyahAudio sends nothing).
+  reciterByKey: (key: string) =>
+    key === 'none'
+      ? undefined
+      : { key, nameAr: 'الحصري (المعلِّم)', folder: 'Husary_Muallim_128kbps' },
   getTrackByKey: vi.fn(),
   getEntryForAyah: vi.fn(),
   KIDS_TRACK: { key: 'kids-hifz' },
 }));
 vi.mock('./send', () => ({ sendMessages: h.sendMessages }));
+vi.mock('./send-audio', () => ({ sendAudio: h.sendAudio }));
+vi.mock('../config', () => ({ config: { audioBaseUrl: 'https://everyayah.com/data' } }));
 vi.mock('./logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
@@ -56,6 +70,7 @@ const ENTRY = {
   position: 3,
   trackId: 1,
   ayah: {
+    surahNumber: 112,
     numberInSurah: 1,
     text: 'قُلْ',
     tafseer: 'إخلاص العبادة لله وحده.',
@@ -213,7 +228,7 @@ describe('buildTodayView tafseer (sent once, with the delivery)', () => {
   });
 });
 
-describe('deliverDueSubscribers (scheduler sends tafseer silently)', () => {
+describe('deliverDueSubscribers (scheduler sends audio + tafseer silently)', () => {
   // A minimal bot whose only job here is to record sendMessage calls.
   const bot = { api: { sendMessage: vi.fn() } } as never;
   const api = (bot as { api: { sendMessage: ReturnType<typeof vi.fn> } }).api;
@@ -228,6 +243,7 @@ describe('deliverDueSubscribers (scheduler sends tafseer silently)', () => {
       activeDays: 127,
       reviewCount: 0,
       tafseerEnabled: true,
+      reciter: 'husary-muallim',
       trackId: 1,
       startedAt: null,
       currentEntryId: 50,
@@ -242,8 +258,50 @@ describe('deliverDueSubscribers (scheduler sends tafseer silently)', () => {
     h.hasDeliveryFor.mockResolvedValue(false);
     h.commitDelivery.mockResolvedValue('sent');
     h.sendMessages.mockResolvedValue('ok');
+    h.getCachedAyahAudioId.mockResolvedValue(null);
+    h.cacheAyahAudioId.mockResolvedValue(undefined);
+    h.sendAudio.mockResolvedValue({ result: 'ok', fileId: 'AUDIO_FILE_ID' });
     // No surah completion, so no milestone message muddies the assertions.
     h.surahCompletionFor.mockResolvedValue(null);
+  });
+
+  it('sends the recitation audio silently, by URL, before the tafseer', async () => {
+    await deliverDueSubscribers(bot, NOW);
+    expect(h.sendAudio).toHaveBeenCalledTimes(1);
+    const [, chatId, audio, opts] = h.sendAudio.mock.calls[0];
+    expect(chatId).toBe(123n);
+    expect(audio).toBe('https://everyayah.com/data/Husary_Muallim_128kbps/112001.mp3');
+    expect(opts).toMatchObject({ silent: true });
+    // Audio goes out before the tafseer (reading order: read, hear, understand).
+    const tafseerOrder = api.sendMessage.mock.invocationCallOrder[0];
+    expect(h.sendAudio.mock.invocationCallOrder[0]).toBeLessThan(tafseerOrder);
+  });
+
+  it('caches the file_id on the first send', async () => {
+    await deliverDueSubscribers(bot, NOW);
+    expect(h.cacheAyahAudioId).toHaveBeenCalledWith(112, 1, 'husary-muallim', 'AUDIO_FILE_ID');
+  });
+
+  it('reuses the cached file_id and does not re-cache it', async () => {
+    h.getCachedAyahAudioId.mockResolvedValue('CACHED_ID');
+    h.sendAudio.mockResolvedValue({ result: 'ok', fileId: 'CACHED_ID' });
+    await deliverDueSubscribers(bot, NOW);
+    expect(h.sendAudio.mock.calls[0][2]).toBe('CACHED_ID'); // sent by file_id, not URL
+    expect(h.cacheAyahAudioId).not.toHaveBeenCalled();
+  });
+
+  it('sends no audio when the subscriber chose "none"', async () => {
+    h.listDeliverableSubscribers.mockResolvedValue([deliverableSub({ reciter: 'none' })]);
+    const stats = await deliverDueSubscribers(bot, NOW);
+    expect(stats.sent).toBe(1); // the ayah still goes out
+    expect(h.sendAudio).not.toHaveBeenCalled();
+  });
+
+  it('does not let an audio failure block the delivery', async () => {
+    h.sendAudio.mockRejectedValue(new Error('cdn down'));
+    const stats = await deliverDueSubscribers(bot, NOW);
+    expect(h.commitDelivery).toHaveBeenCalledTimes(1);
+    expect(stats.sent).toBe(1);
   });
 
   it('sends the tafseer with disable_notification after a delivered ayah', async () => {
@@ -275,13 +333,14 @@ describe('deliverDueSubscribers (scheduler sends tafseer silently)', () => {
     expect(stats.sent).toBe(1);
   });
 
-  it('does not send the tafseer when the commit loses a race (duplicate)', async () => {
+  it('sends neither audio nor tafseer when the commit loses a race (duplicate)', async () => {
     h.commitDelivery.mockResolvedValue('duplicate');
     const stats = await deliverDueSubscribers(bot, NOW);
     expect(stats.sent).toBe(0);
     expect(stats.skipped).toBe(1);
-    // The other path (e.g. /today) already delivered this day with its tafseer,
-    // so this run must not send a second tafseer.
+    // The other path (e.g. /today) already delivered this day with its audio +
+    // tafseer, so this run must not send a second copy of either.
+    expect(h.sendAudio).not.toHaveBeenCalled();
     expect(api.sendMessage).not.toHaveBeenCalled();
   });
 });

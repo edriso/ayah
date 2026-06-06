@@ -1,10 +1,12 @@
 import type { Bot, Context, InlineKeyboard } from 'grammy';
 import {
+  ayahAudioUrl,
   dueLocalDate,
   formatDailyMessages,
   formatTafseerMessages,
   getLocalContext,
   isDayActive,
+  toArabicDigits,
 } from '../core';
 import {
   listDeliverableSubscribers,
@@ -20,11 +22,16 @@ import {
   markBlocked,
   getTrackByKey,
   getEntryForAyah,
+  getCachedAyahAudioId,
+  cacheAyahAudioId,
+  reciterByKey,
   KIDS_TRACK,
   type DeliverableSubscriber,
   type EntryWithAyah,
 } from '../database';
+import { config } from '../config';
 import { sendMessages } from './send';
+import { sendAudio } from './send-audio';
 import { buildCompletionKeyboard } from './completion-keyboard';
 import { COPY } from './copy';
 import { logger } from './logger';
@@ -49,6 +56,39 @@ export function tafseerMessagesFor(entry: EntryWithAyah, enabled: boolean): stri
     numberInSurah: entry.ayah.numberInSurah,
     text: entry.ayah.tafseer,
   });
+}
+
+/**
+ * Send the ayah's recitation audio SILENTLY (no notification sound) in the
+ * subscriber's chosen reciter's voice, or do nothing when they chose "none".
+ * Reuses the cached Telegram file_id when present; otherwise sends the CDN URL
+ * and caches the file_id Telegram returns, so later sends are instant and never
+ * re-fetch. Best-effort: any failure is logged and swallowed so it never
+ * affects the delivery (the ayah is already sent and committed). The caller
+ * invokes this only on a real 'sent' commit, so the audio goes out once, with
+ * the day the ayah is delivered.
+ */
+export async function deliverAyahAudio(
+  bot: Bot<Context>,
+  chatId: bigint,
+  entry: EntryWithAyah,
+  reciterKey: string,
+): Promise<void> {
+  const reciter = reciterByKey(reciterKey);
+  if (!reciter) return; // "none" or an unknown key: no audio
+  try {
+    const { surahNumber, numberInSurah, surah } = entry.ayah;
+    const cachedId = await getCachedAyahAudioId(surahNumber, numberInSurah, reciter.key);
+    const audio =
+      cachedId ?? ayahAudioUrl(config.audioBaseUrl, reciter.folder, surahNumber, numberInSurah);
+    const caption = `🎧 سورة ${surah.nameAr}، آية ${toArabicDigits(numberInSurah)} — ${reciter.nameAr}`;
+    const { result, fileId } = await sendAudio(bot, chatId, audio, { caption, silent: true });
+    if (result === 'ok' && fileId && fileId !== cachedId) {
+      await cacheAyahAudioId(surahNumber, numberInSurah, reciter.key, fileId);
+    }
+  } catch (err) {
+    logger.warn('Failed to send ayah audio', { chatId: String(chatId), error: String(err) });
+  }
 }
 
 /**
@@ -122,11 +162,14 @@ export async function deliverDueSubscribers(
         stats.sent++;
 
         // The ayah was delivered (and only now, on a real 'sent' commit — never
-        // on the loser of a /today race). Follow it with the tafseer as SILENT
-        // messages (no notification sound) when the subscriber wants it, so each
-        // ayah's tafseer arrives exactly once, with the day it is delivered.
-        // Wrapped so a tafseer hiccup never aborts the rest of the batch; the
-        // delivery is already committed.
+        // on the loser of a /today race). Follow it, in reading order, with the
+        // recitation audio then the tafseer — both SILENT (no notification
+        // sound) — so each arrives exactly once, the day the ayah is delivered.
+        // Audio is best-effort inside deliverAyahAudio.
+        await deliverAyahAudio(bot, sub.telegramId, entry, sub.reciter);
+
+        // Tafseer (silent). Wrapped so a hiccup never aborts the rest of the
+        // batch; the delivery is already committed.
         try {
           for (const msg of tafseerMessagesFor(entry, sub.tafseerEnabled)) {
             await bot.api.sendMessage(Number(sub.telegramId), msg, {

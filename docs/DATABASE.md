@@ -174,3 +174,50 @@ send simply omits the tafseer message. The per-subscriber toggle
 `Subscriber.tafseerEnabled` (default true, set with `/tafsir`) decides whether a
 given person gets it at all. Like the text, the tafseer is read-only after
 seeding.
+
+## The recitation audio
+
+After the ayah (and before the tafseer) the bot can also send the ayah's
+**recitation audio** in a reciter the subscriber chooses, as a silent message.
+This is the one piece of content we do **not** store in the repo or the
+database: the per-ayah MP3s are large (one reciter for the whole Quran is about
+1 GB), far too much to commit like the text and tafseer.
+
+### Where it comes from
+
+The audio is the standard, widely used Mushaf Murattal recordings, served
+per-ayah by [everyayah.com](https://everyayah.com) (the same recordings the
+AlQuran.cloud / Islamic Network CDN serves). Each reciter is a folder; the file
+name is the zero-padded surah+ayah, e.g.
+`https://everyayah.com/data/Husary_128kbps/002027.mp3` is surah 2, ayah 27. The
+reciters the bot offers — their key, Arabic name, and CDN folder — are listed in
+`src/database/reference/reciters.ts`; the URL is built by `ayahAudioUrl` in
+`src/core/audio.ts` from the configured base (`AUDIO_BASE_URL`, default
+everyayah).
+
+### How it is delivered without storing it
+
+The first time an ayah is sent in a given reciter's voice, the bot passes the
+CDN URL to Telegram, which fetches the MP3 and hands back a `file_id`. We store
+that `file_id` in the `AyahAudio` table (keyed by surah, ayah, reciter) and
+reuse it on every later send — so the audio is fetched from the CDN at most
+once per (ayah, reciter), and after that it lives on Telegram's servers (no
+ongoing dependency on the CDN). The table holds only short id strings and fills
+lazily as ayat are delivered.
+
+### Verifying the source
+
+Because there is no committed, hashed data file to check, `pnpm verify:audio`
+takes its place: it confirms every offered reciter's folder serves a real MP3
+for a representative spread of ayat (the first ayah, Ayat al-Kursi, the longest
+ayah, a surah with no basmala, and the last ayah). Run it after changing the
+reciter list or the audio base URL.
+
+### The per-subscriber choice
+
+`Subscriber.reciter` holds a reciter key or `"none"`. It defaults to
+`husary-muallim` (الحصري المعلِّم, the repeat-after-me teaching style — the most
+fitting for memorization), so audio is on by default; a subscriber picks another
+reciter or turns it off with `/reciter`. If the chosen reciter is `"none"` (or
+an ayah's audio cannot be fetched), the send simply skips the audio — it is a
+best-effort companion and never blocks the ayah.

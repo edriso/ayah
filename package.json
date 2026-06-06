@@ -23,6 +23,7 @@
     "db:seed": "tsx prisma/seed.ts",
     "data:fetch": "tsx scripts/fetch-quran.ts",
     "data:fetch:tafseer": "tsx scripts/fetch-tafseer.ts",
+    "verify:audio": "tsx scripts/verify-audio.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint .",

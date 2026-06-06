@@ -116,6 +116,11 @@ model Subscriber {
   // silent message (no notification sound). On by default; toggled with
   // /tafsir. Skipped automatically if the ayah has no seeded tafseer.
   tafseerEnabled Boolean @default(true) @map("tafseer_enabled")
+  // Which reciter's recitation audio to send (silently) after the ayah: a
+  // reciter key (see src/database/reference/reciters.ts) or "none" to send no
+  // audio. Defaults to the kids teacher style (الحصري المعلِّم). Chosen with
+  // /reciter.
+  reciter        String  @default("husary-muallim") @map("reciter") @db.VarChar(32)
 
   trackId Int @map("track_id")
   // The entry the subscriber is currently on. Null means "not started yet";
@@ -168,4 +173,25 @@ model DeliveryLog {
   @@unique([subscriberId, scheduledFor], map: "delivery_logs_subscriber_date_key")
   @@index([subscriberId, createdAt])
   @@map("delivery_logs")
+}
+
+// ─── Recitation audio cache (Telegram file_ids) ─────────────────────
+//
+// We never store the audio bytes (one reciter for the whole Quran is ~1 GB).
+// The first time an ayah's audio is sent for a given reciter, Telegram fetches
+// it from the CDN and hands back a file_id; we store that here and reuse it on
+// every later send (instant, no re-fetch). Keyed by (surah, ayah, reciter), so
+// each reciter caches independently. Fills lazily as ayat are delivered.
+
+model AyahAudio {
+  surahNumber   Int    @map("surah_number")
+  numberInSurah Int    @map("number_in_surah")
+  reciter       String @db.VarChar(32) // reciter key (see reference/reciters.ts)
+  fileId        String @map("file_id") @db.VarChar(255)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@id([surahNumber, numberInSurah, reciter])
+  @@map("ayah_audio")
 }

@@ -20,13 +20,18 @@ developer can work on it.
   default, set with `/review`, 0 to 20). Then their position moves forward by
   one. On long surahs the review is split across several messages so it never
   exceeds Telegram's size limit.
-- Right after the ayah, the bot can send that ayah's tafseer (التفسير الميسر,
-  the concise King Fahd Complex tafseer) as a **silent** message — no second
-  notification sound. It is on by default and each person can turn it off with
-  `/tafsir`.
+- Right after the ayah, the bot can send that ayah's **recitation audio** (in a
+  reciter the person chooses, or none) and its **tafseer** (التفسير الميسر, the
+  concise King Fahd Complex tafseer) — both as **silent** messages, no second
+  notification sound. The tafseer is on by default (`/tafsir`); the audio
+  defaults to الحصري المعلِّم (the kids teacher style) and the reciter is picked
+  with `/reciter` (seven reciters, or off). Both are sent once, the day the ayah
+  is delivered.
 - The Quran text is verified Tanzil Uthmani text, and the tafseer is the
   verified Al-Muyassar edition. Both live in read-only database tables and are
-  never changed by the bot. See `docs/DATABASE.md`.
+  never changed by the bot. The recitation audio is not stored in the repo (it
+  is large); it is fetched per-ayah from a trusted CDN on first send and then
+  reused by Telegram file_id. See `docs/DATABASE.md`.
 
 ## Project layout
 
@@ -88,6 +93,7 @@ refuses to write anything that does not match.
 - `/days` pick which weekdays you receive ayat
 - `/review N` how many previous ayat to review (0 to 20, default 10)
 - `/tafsir on|off` turn the silent tafseer after the ayah on or off (default on)
+- `/reciter` pick the reciter for the silent recitation audio, or turn it off
 - `/timezone Area/City` set your timezone
 - `/break` take a break (stops sending, keeps your position)
 - `/resume` come back from a break

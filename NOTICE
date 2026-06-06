@@ -43,5 +43,19 @@ correct count per surah) and is never edited by application code. It is used
 for non-commercial educational purposes (helping people understand and
 memorize the Quran).
 
+Recitation audio
+----------------
+
+The daily ayah's optional recitation audio is the standard Mushaf Murattal
+recordings of the reciters listed in src/database/reference/reciters.ts
+(among them Mahmoud Khalil Al-Husary, Mohamed Siddiq Al-Minshawi, Abdul Basit
+Abdul Samad, Mishary Rashid Alafasy, Maher Al-Muaiqly, and Saad Al-Ghamdi). The
+audio is fetched per ayah from everyayah.com and is NOT stored or redistributed
+in this repository; only the URLs are referenced, and Telegram caches each clip
+after the first send. Each recording remains the work and property of its
+reciter and original publisher, used here for non-commercial educational
+purposes (helping people learn and memorize the Quran). No audio is modified.
+
 The software itself is under the 0BSD license in the LICENSE file; this NOTICE
-covers only the bundled Quran text and tafseer.
+covers only the bundled Quran text and tafseer and the referenced recitation
+audio.

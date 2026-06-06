@@ -122,3 +122,10 @@ The release that added the **tafseer** needs `pnpm db:deploy` (the migration
 adds the `ayat.tafseer` and `subscribers.tafseer_enabled` columns) and one
 `pnpm db:seed` (it backfills the tafseer for the already-seeded ayat from the
 committed `tafseer-muyassar.json`). Both are idempotent.
+
+The release that added the **recitation audio** needs only `pnpm db:deploy` (the
+migration adds the `subscribers.reciter` column and the `ayah_audio` file_id
+cache table). There is no data to fetch or seed: the audio streams from the CDN
+on first send and Telegram caches it. `pnpm verify:audio` is an optional check
+that the CDN still serves every reciter; set `AUDIO_BASE_URL` only to self-host
+or use a different mirror.

@@ -32,6 +32,21 @@ function parseTimezone(raw: string | undefined): string {
   return tz;
 }
 
+function parseAudioBaseUrl(raw: string | undefined): string {
+  const url = raw?.trim() || DEFAULT_AUDIO_BASE_URL;
+  if (!/^https?:\/\//i.test(url)) {
+    throw new Error(
+      `AUDIO_BASE_URL must be an http(s) URL (got "${raw}"). ` +
+        `It is the CDN root that holds per-reciter folders, e.g. "${DEFAULT_AUDIO_BASE_URL}".`,
+    );
+  }
+  return url.replace(/\/+$/, '');
+}
+
+// The recitation audio CDN root. Per-reciter folders + zero-padded surah/ayah
+// hang off it (see src/core/audio.ts and src/database/reference/reciters.ts).
+const DEFAULT_AUDIO_BASE_URL = 'https://everyayah.com/data';
+
 export const config = Object.freeze({
   // REQUIRED. Bot token from @BotFather.
   botToken: requireEnv('BOT_TOKEN').trim(),
@@ -39,5 +54,8 @@ export const config = Object.freeze({
   defaultTimezone: parseTimezone(process.env.TZ_NAME),
   // Optional. If unset, the /admin_* commands authorise nobody.
   adminTelegramId: optionalBigInt(process.env.ADMIN_TELEGRAM_ID),
+  // CDN root for the daily ayah's recitation audio. Override only to self-host
+  // or point at another mirror; the per-reciter folders must match.
+  audioBaseUrl: parseAudioBaseUrl(process.env.AUDIO_BASE_URL),
   isDev: process.env.NODE_ENV !== 'production',
 });
