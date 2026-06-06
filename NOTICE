@@ -20,5 +20,28 @@ without change, as long as you:
 
 This project does all three. The text is treated as read-only data: it is
 verified on download (6236 ayat, correct count per surah) and is never
-edited by application code. The software itself is under the 0BSD license
-in the LICENSE file; this NOTICE covers only the bundled Quran text.
+edited by application code.
+
+
+Tafseer (commentary)
+--------------------
+
+The tafseer used by this project is التفسير الميسر (Al-Muyassar), the concise
+tafseer issued by the King Fahd Complex for the Printing of the Holy Quran
+(مجمع الملك فهد لطباعة المصحف الشريف). It was downloaded with
+`pnpm data:fetch:tafseer` from the AlQuran.cloud API (edition "ar.muyassar")
+and is stored, unchanged, at:
+
+    prisma/data/tafseer-muyassar.json
+
+التفسير الميسر (Al-Tafsir Al-Muyassar)
+Copyright (C) King Fahd Complex for the Printing of the Holy Quran
+
+The tafseer is reproduced unchanged and attributed to its publisher, the King
+Fahd Complex. Like the Quran text, it is verified on download (6236 entries,
+correct count per surah) and is never edited by application code. It is used
+for non-commercial educational purposes (helping people understand and
+memorize the Quran).
+
+The software itself is under the 0BSD license in the LICENSE file; this NOTICE
+covers only the bundled Quran text and tafseer.

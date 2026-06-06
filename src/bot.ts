@@ -6,6 +6,7 @@ import {
   setDeliveryTime,
   setTimezone,
   setReviewCount,
+  setTafseerEnabled,
   pauseSubscriber,
   resumeSubscriber,
   setStartPosition,
@@ -54,6 +55,7 @@ const ONBOARD_PICK = 'ayah:onb:pick';
 const ONBOARD_MUSHAF = 'ayah:onb:mushaf';
 const ORDER_PICK_PREFIX = 'ayah:order:';
 const PAUSE_TOGGLE = 'ayah:pause:toggle';
+const TAFSEER_TOGGLE = 'ayah:tafseer:toggle';
 
 // Default review window for /admin_preview when the admin does not give one.
 // Small on purpose: enough to show the review block renders, without a wall
@@ -99,11 +101,13 @@ async function settingsText(sub: Subscriber): Promise<string> {
   });
 }
 
-/** The small keyboard under /settings: a pause/resume toggle and a shortcut
- *  to pick the starting surah. */
-function buildSettingsKeyboard(paused: boolean): InlineKeyboard {
+/** The small keyboard under /settings: a pause/resume toggle, a tafseer
+ *  on/off toggle, and a shortcut to pick the starting surah. */
+function buildSettingsKeyboard(paused: boolean, tafseerEnabled: boolean): InlineKeyboard {
   return new InlineKeyboard()
     .text(paused ? COPY.resumeBtn : COPY.pauseBtn, PAUSE_TOGGLE)
+    .row()
+    .text(tafseerEnabled ? COPY.tafsirOffBtn : COPY.tafsirOnBtn, TAFSEER_TOGGLE)
     .row()
     .text(COPY.settingsSurahBtn, ONBOARD_PICK);
 }
@@ -172,6 +176,16 @@ async function sendTodayView(
   now: Date,
 ): Promise<void> {
   for (const message of view.messages) await ctx.reply(message);
+  // The tafseer follows the ayah SILENTLY (no notification sound). Wrapped so a
+  // tafseer hiccup never blocks claiming the day below — the ayah is what
+  // matters; the tafseer is a quiet companion.
+  try {
+    for (const message of view.tafseer) {
+      await ctx.reply(message, { disable_notification: true });
+    }
+  } catch (err) {
+    logger.warn('Failed to send tafseer for /today', { subscriberId: sub.id, error: String(err) });
+  }
   if (view.claim) {
     const committed = await commitDelivery({
       subscriberId: sub.id,
@@ -256,7 +270,7 @@ bot.command('settings', async (ctx) => {
   const sub = await subscriberFor(ctx);
   if (!sub) return;
   await ctx.reply(await settingsText(sub), {
-    reply_markup: buildSettingsKeyboard(sub.pausedAt !== null),
+    reply_markup: buildSettingsKeyboard(sub.pausedAt !== null, sub.tafseerEnabled),
   });
 });
 
@@ -354,6 +368,26 @@ bot.command('review', async (ctx) => {
   const count = clampReviewCount(Number(normalized));
   await setReviewCount(sub.id, count);
   await ctx.reply(COPY.reviewUpdated(count));
+});
+
+// /tafsir [on|off]: turn the daily tafseer (sent silently after the ayah) on
+// or off. With no argument, show the current state and how to change it.
+bot.command('tafsir', async (ctx) => {
+  const sub = await subscriberFor(ctx);
+  if (!sub) return;
+  const arg = commandArg(ctx, 'tafsir')?.toLowerCase();
+  if (!arg) {
+    await ctx.reply(COPY.tafsirUsage(sub.tafseerEnabled));
+    return;
+  }
+  const on = ['on', '1', 'تشغيل', 'نعم'].includes(arg);
+  const off = ['off', '0', 'إيقاف', 'ايقاف', 'لا'].includes(arg);
+  if (!on && !off) {
+    await ctx.reply(COPY.tafsirInvalid);
+    return;
+  }
+  await setTafseerEnabled(sub.id, on);
+  await ctx.reply(COPY.tafsirUpdated(on));
 });
 
 // /time: with an argument, set the time directly; with none, offer buttons.
@@ -664,11 +698,34 @@ bot.callbackQuery(PAUSE_TOGGLE, async (ctx) => {
   if (fresh) {
     await ctx
       .editMessageText(await settingsText(fresh), {
-        reply_markup: buildSettingsKeyboard(fresh.pausedAt !== null),
+        reply_markup: buildSettingsKeyboard(fresh.pausedAt !== null, fresh.tafseerEnabled),
       })
       .catch(ignoreNotModified);
   }
   await ctx.answerCallbackQuery({ text: wasPaused ? 'عُدت من الراحة ✅' : 'في وضع الراحة ⏸️' });
+});
+
+// ─── Settings tafseer toggle ────────────────────────────────────────
+
+bot.callbackQuery(TAFSEER_TOGGLE, async (ctx) => {
+  const sub = await subscriberFor(ctx);
+  if (!sub) {
+    await ctx.answerCallbackQuery();
+    return;
+  }
+  const enabled = !sub.tafseerEnabled;
+  await setTafseerEnabled(sub.id, enabled);
+  // Re-render the whole settings card in place so the status line and the
+  // toggle button both reflect the new state, and toast the change.
+  const fresh = await subscriberFor(ctx);
+  if (fresh) {
+    await ctx
+      .editMessageText(await settingsText(fresh), {
+        reply_markup: buildSettingsKeyboard(fresh.pausedAt !== null, fresh.tafseerEnabled),
+      })
+      .catch(ignoreNotModified);
+  }
+  await ctx.answerCallbackQuery({ text: COPY.tafsirToggleAck(enabled) });
 });
 
 // ─── Admin commands ─────────────────────────────────────────────────
@@ -746,6 +803,7 @@ async function setBotProfile() {
     { command: 'time', description: 'ضبط وقت الإرسال' },
     { command: 'days', description: 'اختيار أيام الإرسال' },
     { command: 'review', description: 'عدد آيات المراجعة' },
+    { command: 'tafsir', description: 'تشغيل أو إيقاف التفسير' },
     { command: 'timezone', description: 'ضبط المنطقة الزمنية' },
     { command: 'pause', description: 'أخذ راحة أو العودة منها' },
     { command: 'settings', description: 'عرض إعداداتك' },

@@ -20,8 +20,13 @@ developer can work on it.
   default, set with `/review`, 0 to 20). Then their position moves forward by
   one. On long surahs the review is split across several messages so it never
   exceeds Telegram's size limit.
-- The Quran text is verified Tanzil Uthmani text. It lives in read-only
-  database tables and is never changed by the bot. See `docs/DATABASE.md`.
+- Right after the ayah, the bot can send that ayah's tafseer (التفسير الميسر,
+  the concise King Fahd Complex tafseer) as a **silent** message — no second
+  notification sound. It is on by default and each person can turn it off with
+  `/tafsir`.
+- The Quran text is verified Tanzil Uthmani text, and the tafseer is the
+  verified Al-Muyassar edition. Both live in read-only database tables and are
+  never changed by the bot. See `docs/DATABASE.md`.
 
 ## Project layout
 
@@ -55,15 +60,16 @@ cp .env.example .env
 #    - set BOT_TOKEN (from @BotFather)
 #    - set DATABASE_URL (your MySQL connection)
 
-# 3. Download and verify the Quran text (writes a frozen data file)
-#    The text is also committed to the repo, so if you just cloned this you
-#    can skip this step.
+# 3. Download and verify the Quran text and the tafseer (frozen data files)
+#    Both are also committed to the repo, so if you just cloned this you can
+#    skip this step.
 pnpm data:fetch
+pnpm data:fetch:tafseer
 
 # 4. Create the tables (applies the migrations)
 pnpm db:deploy
 
-# 5. Seed surahs, ayat, and the kids track
+# 5. Seed surahs, ayat (text + tafseer), and the tracks
 pnpm db:seed
 
 # 6. Run the bot
@@ -81,6 +87,7 @@ refuses to write anything that does not match.
 - `/time HH:MM` set the daily send time
 - `/days` pick which weekdays you receive ayat
 - `/review N` how many previous ayat to review (0 to 20, default 10)
+- `/tafsir on|off` turn the silent tafseer after the ayah on or off (default on)
 - `/timezone Area/City` set your timezone
 - `/break` take a break (stops sending, keeps your position)
 - `/resume` come back from a break

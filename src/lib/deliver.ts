@@ -1,5 +1,11 @@
 import type { Bot, Context, InlineKeyboard } from 'grammy';
-import { dueLocalDate, formatDailyMessages, getLocalContext, isDayActive } from '../core';
+import {
+  dueLocalDate,
+  formatDailyMessages,
+  formatTafseerMessages,
+  getLocalContext,
+  isDayActive,
+} from '../core';
 import {
   listDeliverableSubscribers,
   hasDeliveryFor,
@@ -28,6 +34,21 @@ export interface DeliveryStats {
   sent: number;
   skipped: number;
   failed: number;
+}
+
+/**
+ * The tafseer message(s) to send after today's ayah, or [] when the subscriber
+ * turned tafseer off or the ayah has no seeded tafseer. The caller sends these
+ * SILENTLY (disable_notification) so they accompany the ayah without a second
+ * notification sound.
+ */
+export function tafseerMessagesFor(entry: EntryWithAyah, enabled: boolean): string[] {
+  if (!enabled || !entry.ayah.tafseer) return [];
+  return formatTafseerMessages({
+    surah: { number: entry.ayah.surah.number, nameAr: entry.ayah.surah.nameAr },
+    numberInSurah: entry.ayah.numberInSurah,
+    text: entry.ayah.tafseer,
+  });
 }
 
 /**
@@ -88,6 +109,18 @@ export async function deliverDueSubscribers(
         continue; // do NOT advance; retried next tick
       }
 
+      // The ayah was delivered. Follow it with the tafseer as SILENT messages
+      // (no notification sound) when the subscriber wants it. Wrapped so a
+      // tafseer hiccup never blocks the commit/advance below: the ayah is the
+      // delivery that matters, the tafseer is a quiet companion.
+      try {
+        for (const msg of tafseerMessagesFor(entry, sub.tafseerEnabled)) {
+          await bot.api.sendMessage(Number(sub.telegramId), msg, { disable_notification: true });
+        }
+      } catch (err) {
+        logger.error('Failed to send tafseer', { id: sub.id, error: String(err) });
+      }
+
       const committed = await commitDelivery({
         subscriberId: sub.id,
         entry,
@@ -136,6 +169,10 @@ export interface TodayView {
   /** The messages to reply (today's ayah + review), or empty when nothing can
    *  be prepared (a dangling entry, or a finished non-looping track). */
   messages: string[];
+  /** The tafseer message(s) to send AFTER the ayah, silently (no notification
+   *  sound). Empty when the subscriber turned tafseer off or the ayah has no
+   *  seeded tafseer. The caller sends these with disable_notification. */
+  tafseer: string[];
   /**
    * Set when this view should be COMMITTED as today's delivery (the user pulled
    * their ayah before the scheduled send). The caller records it AFTER the
@@ -163,6 +200,7 @@ export interface TodaySubscriber {
   currentEntryId: number | null;
   startedAt: Date | null;
   reviewCount: number;
+  tafseerEnabled: boolean;
 }
 
 /**
@@ -191,16 +229,23 @@ export async function buildTodayView(
   // the user just chose, so it skips this re-show and renders it below.
   if (delivered && !opts.reposition) {
     const entry = await getEntryById(delivered.trackEntryId);
-    if (!entry) return { messages: [], claim: null, alreadyDelivered: true };
+    if (!entry) return { messages: [], tafseer: [], claim: null, alreadyDelivered: true };
     const content = await buildDailyContent(entry, sub.reviewCount);
-    return { messages: formatDailyMessages(content), claim: null, alreadyDelivered: true };
+    return {
+      messages: formatDailyMessages(content),
+      tafseer: tafseerMessagesFor(entry, sub.tafseerEnabled),
+      claim: null,
+      alreadyDelivered: true,
+    };
   }
 
   // Show the current ayah (or the first, if not started).
   const entry = await resolveTargetEntry(sub);
-  if (!entry) return { messages: [], claim: null, alreadyDelivered: delivered !== null };
+  if (!entry)
+    return { messages: [], tafseer: [], claim: null, alreadyDelivered: delivered !== null };
   const content = await buildDailyContent(entry, sub.reviewCount);
   const messages = formatDailyMessages(content);
+  const tafseer = tafseerMessagesFor(entry, sub.tafseerEnabled);
 
   // Claim it as today's delivery only when today is genuinely free: not already
   // delivered, an active day, and not paused. A reposition on an
@@ -218,7 +263,7 @@ export async function buildTodayView(
       loops: track?.loops ?? false,
     };
   }
-  return { messages, claim, alreadyDelivered: delivered !== null };
+  return { messages, tafseer, claim, alreadyDelivered: delivered !== null };
 }
 
 /**

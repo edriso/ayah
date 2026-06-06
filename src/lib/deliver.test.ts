@@ -44,12 +44,18 @@ const CONTENT = {
   today: { numberInSurah: 1, text: 'قُلْ هُوَ ٱللَّهُ أَحَدٌ' },
   review: [],
 };
-// A resolved entry (shape only matters by reference for the claim).
+// A resolved entry (shape only matters by reference for the claim). The ayah
+// carries a tafseer so the tafseer message can be built from the entry.
 const ENTRY = {
   id: 7,
   position: 3,
   trackId: 1,
-  ayah: { numberInSurah: 1, text: 'قُلْ', surah: { number: 112, nameAr: 'الإخلاص' } },
+  ayah: {
+    numberInSurah: 1,
+    text: 'قُلْ',
+    tafseer: 'إخلاص العبادة لله وحده.',
+    surah: { number: 112, nameAr: 'الإخلاص' },
+  },
 };
 
 function todaySub(over: Record<string, unknown> = {}) {
@@ -62,6 +68,7 @@ function todaySub(over: Record<string, unknown> = {}) {
     currentEntryId: 50, // already advanced past the delivered entry
     startedAt: null,
     reviewCount: 0,
+    tafseerEnabled: true,
     ...over,
   } as never;
 }
@@ -141,6 +148,34 @@ describe('buildTodayView (/today claims today)', () => {
     // Shows the just-set position, not the earlier delivered re-show.
     expect(h.resolveTargetEntry).toHaveBeenCalled();
     expect(h.getEntryById).not.toHaveBeenCalled();
+  });
+});
+
+describe('buildTodayView tafseer (silent companion)', () => {
+  it('includes the tafseer when enabled and the ayah has one', async () => {
+    const view = await buildTodayView(todaySub(), NOW);
+    expect(view.tafseer.length).toBeGreaterThan(0);
+    expect(view.tafseer[0]).toContain('التفسير الميسر');
+    expect(view.tafseer[0]).toContain('إخلاص العبادة');
+  });
+
+  it('omits the tafseer when the subscriber turned it off', async () => {
+    const view = await buildTodayView(todaySub({ tafseerEnabled: false }), NOW);
+    expect(view.tafseer).toEqual([]);
+    expect(view.messages.length).toBeGreaterThan(0); // the ayah is unaffected
+  });
+
+  it('omits the tafseer when the ayah has none seeded', async () => {
+    h.resolveTargetEntry.mockResolvedValue({ ...ENTRY, ayah: { ...ENTRY.ayah, tafseer: null } });
+    const view = await buildTodayView(todaySub(), NOW);
+    expect(view.tafseer).toEqual([]);
+  });
+
+  it('re-shows the tafseer alongside an already-delivered ayah', async () => {
+    h.getDeliveryFor.mockResolvedValue({ trackEntryId: 7 });
+    const view = await buildTodayView(todaySub(), NOW);
+    expect(view.alreadyDelivered).toBe(true);
+    expect(view.tafseer.length).toBeGreaterThan(0);
   });
 });
 

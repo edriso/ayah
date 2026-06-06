@@ -9,3 +9,4 @@ export * from './review';
 export * from './arabic';
 export * from './basmala';
 export * from './format';
+export * from './tafseer';

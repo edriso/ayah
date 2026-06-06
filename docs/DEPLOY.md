@@ -16,8 +16,9 @@ small `/health` endpoint for uptime checks.
 ```bash
 pnpm install --prod=false
 pnpm data:fetch          # writes the frozen Quran data file (skip if cloned)
+pnpm data:fetch:tafseer  # writes the frozen tafseer data file (skip if cloned)
 pnpm db:deploy           # applies the migrations (creates the tables)
-pnpm db:seed             # fills the Quran tables and BOTH order tracks
+pnpm db:seed             # fills the Quran tables (text + tafseer) and BOTH tracks
 pnpm start               # runs the bot (src/index.ts)
 ```
 
@@ -108,11 +109,16 @@ makes sure a restart never double-sends.
 git pull
 pnpm install
 pnpm db:deploy     # apply any new migrations
-pnpm db:seed       # only if the release notes mention a new order/track
+pnpm db:seed       # if the release adds a new order/track, or backfills data
 pnpm start
 ```
 
 You do not need to re-run `data:fetch` on a normal update (the Quran data does
-not change). Re-run `db:seed` only when a release adds a new order/track; it is
+not change). Re-run `db:seed` when a release adds a new order/track; it is
 idempotent, so running it when nothing is new is a harmless no-op. The release
 that added the Mushaf (forward) order needs one `pnpm db:seed`.
+
+The release that added the **tafseer** needs `pnpm db:deploy` (the migration
+adds the `ayat.tafseer` and `subscribers.tafseer_enabled` columns) and one
+`pnpm db:seed` (it backfills the tafseer for the already-seeded ayat from the
+committed `tafseer-muyassar.json`). Both are idempotent.

@@ -59,12 +59,18 @@ describe('settingsSummary status line', () => {
     deliveryMinute: 0,
     activeDays: ALL_DAYS,
     reviewCount: 10,
+    tafseerEnabled: true,
     timezone: 'Africa/Cairo',
     pausedAt: null as Date | null,
   };
 
   it('shows working when active with at least one day', () => {
     expect(settingsSummary(base)).toContain('يعمل');
+  });
+
+  it('shows the tafseer line on or off', () => {
+    expect(settingsSummary(base)).toContain('• التفسير: مفعّل');
+    expect(settingsSummary({ ...base, tafseerEnabled: false })).toContain('• التفسير: معطّل');
   });
 
   it('warns (not "working") when no days are chosen', () => {

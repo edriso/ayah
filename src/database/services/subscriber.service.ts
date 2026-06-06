@@ -126,6 +126,14 @@ export function setReviewCount(subscriberId: number, reviewCount: number) {
   });
 }
 
+/** Turn the daily tafseer (sent silently after the ayah) on or off. */
+export function setTafseerEnabled(subscriberId: number, enabled: boolean) {
+  return prisma.subscriber.update({
+    where: { id: subscriberId },
+    data: { tafseerEnabled: enabled },
+  });
+}
+
 /**
  * Mark a subscriber as unreachable (they blocked the bot, or a send failed
  * with a 403). Send loops skip blocked subscribers. Cleared automatically

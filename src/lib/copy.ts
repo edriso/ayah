@@ -116,6 +116,7 @@ export interface SettingsView {
   deliveryMinute: number;
   activeDays: number;
   reviewCount: number;
+  tafseerEnabled: boolean;
   timezone: string;
   pausedAt: Date | null;
   // Where the subscriber stands now and in which order. Optional so pure
@@ -147,6 +148,7 @@ export function settingsSummary(s: SettingsView): string {
     `• وقت الإرسال: ${formatTimeAr(s.deliveryHour, s.deliveryMinute)}`,
     `• الأيام: ${daysSummaryAr(s.activeDays)}`,
     `• المراجعة: ${reviewSummaryAr(s.reviewCount)}`,
+    `• التفسير: ${s.tafseerEnabled ? 'مفعّل (التفسير الميسر) 📖' : 'معطّل'}`,
     `• المنطقة الزمنية: ${ltr(s.timezone)}`,
   ];
   if (s.position) {
@@ -208,6 +210,7 @@ export const COPY = {
     `/time: ضبط وقت الإرسال، مثل ${ltr('/time 07:00')}`,
     '/days: اختيار أيام الإرسال',
     `/review: عدد آيات المراجعة من ٠ إلى ٢٠، مثل ${ltr('/review 5')}`,
+    '/tafsir: تشغيل أو إيقاف تفسير الآية (التفسير الميسر) — يصل بصمت بعد الآية',
     `/timezone: ضبط المنطقة الزمنية، مثل ${ltr('/timezone Africa/Cairo')}`,
     '/pause: أخذ راحة أو العودة منها (يبقى موضعك محفوظًا)',
     '/settings: عرض إعداداتك الحالية',
@@ -324,6 +327,24 @@ export const COPY = {
       ? 'تم إيقاف المراجعة. ستصلك آية اليوم فقط ✅'
       : `تم ضبط المراجعة على ${reviewSummaryAr(count)} ✅`,
 
+  // Tafseer (التفسير الميسر) toggle. The tafseer arrives as a silent message
+  // right after the daily ayah, so it never adds a second notification sound.
+  tafsirUsage: (enabled: boolean) =>
+    [
+      `التفسير حاليًا: ${enabled ? 'مفعّل 📖' : 'معطّل'}.`,
+      'يصلك تفسير الآية (التفسير الميسر) بصمت بعد آية اليوم، دون صوت تنبيه.',
+      `للتشغيل اكتب ${ltr('/tafsir on')}، وللإيقاف ${ltr('/tafsir off')}`,
+    ].join('\n'),
+  tafsirInvalid: `اكتب ${ltr('/tafsir on')} للتشغيل أو ${ltr('/tafsir off')} للإيقاف`,
+  tafsirUpdated: (enabled: boolean) =>
+    enabled
+      ? 'تم تفعيل التفسير ✅ سيصلك تفسير الآية (التفسير الميسر) بصمت بعد آية اليوم.'
+      : 'تم إيقاف التفسير ✅ ستصلك آية اليوم فقط.',
+  // Settings keyboard toggle button + its toast.
+  tafsirOnBtn: '📖 تشغيل التفسير',
+  tafsirOffBtn: '🔇 إيقاف التفسير',
+  tafsirToggleAck: (enabled: boolean) => (enabled ? 'تم تفعيل التفسير 📖' : 'تم إيقاف التفسير 🔇'),
+
   // The bot's About (short description, ≤120 chars) and Description (≤512
   // chars), set on startup via the Bot API so the profile and empty-chat start
   // screen describe the bot without a manual @BotFather step. Mirrors the doc
@@ -334,6 +355,7 @@ export const COPY = {
     'السلام عليكم ورحمة الله 🌿',
     'بوت "آية" يعينك على حفظ القرآن الكريم بخطوات صغيرة ثابتة:',
     '• تصلك كل يوم آية جديدة للحفظ، ومعها آيات سابقة من نفس السورة للمراجعة.',
+    '• ويمكن أن يصلك تفسير الآية (التفسير الميسر) بصمت بعدها، وتتحكم به بأمر /tafsir.',
     '• تختار السورة التي تبدأ بها، والترتيب: من الناس (منهج الحفظ) أو من الفاتحة (ترتيب المصحف).',
     '• تختار وقت الإرسال والأيام التي تناسبك.',
     '• يمكنك أخذ راحة وقتما تشاء، وتعود من حيث توقفت.',

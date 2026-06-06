@@ -25,6 +25,7 @@ Ayah (6236 rows, read-only)
   surahNumber     FK -> Surah.number
   numberInSurah   1..ayahCount
   text            Uthmani text, exactly as Tanzil shipped it
+  tafseer         Al-Muyassar tafseer for this ayah (nullable), read-only
   unique(surahNumber, numberInSurah)
 
 Track (the curriculum)
@@ -50,6 +51,7 @@ Subscriber (who we deliver to)
   deliveryMinute  0..59, local time
   activeDays      7-bit mask, bit 0 = Monday .. bit 6 = Sunday
   reviewCount     previous ayat to review (0..20, default 10)
+  tafseerEnabled  send the ayah's tafseer (silently) after it (default true)
   trackId         FK -> Track.id
   currentEntryId  FK -> TrackEntry.id, null = not started
   pausedAt        null = active, set = on a break

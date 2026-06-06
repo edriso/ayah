@@ -7,10 +7,12 @@ purpose. The aim is that a junior developer can read this and be productive.
 
 Ayah is a Telegram bot that sends one Quran ayah a day to each subscriber,
 with the previous ayat of the same surah for review (a per-user count, 0-20,
-default 10). Each subscriber chooses where to begin (surah + ayah) and in
-which order to memorize: the reverse hifz order (from An-Nas, the default) or
-the forward Mushaf order (from Al-Fatihah). It is one small TypeScript
-project, with everything under `src/`:
+default 10). Right after the ayah it can also send that ayah's tafseer
+(التفسير الميسر) as a SILENT message (no notification sound) — on by default,
+toggled per user with `/tafsir`. Each subscriber chooses where to begin (surah
++ ayah) and in which order to memorize: the reverse hifz order (from An-Nas,
+the default) or the forward Mushaf order (from Al-Fatihah). It is one small
+TypeScript project, with everything under `src/`:
 
 - `src/core` pure logic, no database, no network. Fully unit-tested.
 - `src/database` the Prisma client and the database services.
@@ -32,9 +34,10 @@ Read `docs/ERD.md` and `docs/DATABASE.md` before changing data or the schema.
 
 ## Golden rules
 
-1. Never type Quran text by hand. The text only comes from `pnpm data:fetch`
-   (verified Tanzil Uthmani). Surah and Ayah tables are read-only after
-   seeding.
+1. Never type Quran text OR tafseer by hand. The text only comes from
+   `pnpm data:fetch` (verified Tanzil Uthmani); the tafseer only from
+   `pnpm data:fetch:tafseer` (verified Al-Muyassar, King Fahd Complex). Surah
+   and Ayah tables (including `Ayah.tafseer`) are read-only after seeding.
 2. Keep `core` pure. No database or network imports there. That is what
    keeps it easy to test.
 3. The bot sends plain text, never Markdown or HTML parse_mode. Quran text
@@ -65,6 +68,16 @@ minute. For each active, non-blocked subscriber:
    transaction.
 
 One subscriber failing is caught and never stops the rest of the batch.
+
+After a successful ayah send (and before the milestone below), the bot follows
+it with the ayah's tafseer as one or more SILENT messages (`disable_notification`,
+so no second notification sound), when the subscriber has tafseer on
+(`Subscriber.tafseerEnabled`, default true) and the ayah has a seeded tafseer.
+The tafseer is for TODAY's ayah only, never the review block. It is wrapped so a
+tafseer hiccup never blocks the commit/advance: the ayah is the delivery that
+matters, the tafseer is a quiet companion (`tafseerMessagesFor` in deliver.ts,
+`formatTafseerMessages` in `src/core/tafseer.ts`). `/today` and the reposition
+flow send it the same way via `TodayView.tafseer`.
 
 `/today` and repositioning (`/surah` and the surah / onboarding buttons) deliver
 today's ayah the same way: they reuse `buildTodayView` + `commitDelivery`, so a
@@ -101,9 +114,10 @@ boundaries when it exceeds Telegram's limit; the longest single ayah
 
 ```bash
 pnpm install
-pnpm data:fetch     # download + verify the Quran text (once; also committed)
-pnpm db:deploy      # apply migrations (create tables)
-pnpm db:seed        # fill Quran tables and the kids track
+pnpm data:fetch         # download + verify the Quran text (once; also committed)
+pnpm data:fetch:tafseer # download + verify the tafseer (Al-Muyassar; also committed)
+pnpm db:deploy          # apply migrations (create tables)
+pnpm db:seed            # fill Quran tables (text + tafseer) and the tracks
 pnpm dev            # run the bot with reload
 pnpm test           # all tests
 pnpm check          # typecheck + lint + test (run before pushing)
@@ -150,6 +164,9 @@ real changes go through a migration so production stays in step.
 - Shared kernel (schedule, days, arabic, env, logger, send): the
   `telegram-bot-kit` package; the matching `src/core/*` and `src/lib/{send,logger}.ts`
   files are re-export shims.
+- Tafseer text + fetch: `prisma/data/tafseer-muyassar.json` (committed),
+  fetched/verified by `scripts/fetch-tafseer.ts`; seeded into `Ayah.tafseer`.
+- Tafseer message rendering: `src/core/tafseer.ts` (`formatTafseerMessages`).
 - Curriculum order: `src/database/reference/curriculum.ts`
 - Surah names and revelation: `src/database/reference/surahs.ts`
 - Ayah count oracle: `src/database/reference/ayah-counts.ts`

@@ -42,6 +42,11 @@ model Ayah {
   surahNumber   Int    @map("surah_number")
   numberInSurah Int    @map("number_in_surah")
   text          String @db.Text // Uthmani text, exactly as Tanzil shipped it
+  // Concise tafseer (التفسير الميسر, King Fahd Complex), seeded once from the
+  // verified data file alongside the text and never written to again. Nullable
+  // so the bot still works before the tafseer is fetched/seeded (the daily send
+  // simply omits the tafseer message); the seed backfills any null rows.
+  tafseer       String? @db.Text
 
   surah   Surah        @relation(fields: [surahNumber], references: [number])
   entries TrackEntry[]
@@ -107,6 +112,10 @@ model Subscriber {
   // (MAX_REVIEW_COUNT in src/core). On long surahs the review is split
   // across several messages so it never exceeds Telegram's size limit.
   reviewCount    Int @default(10) @map("review_count")
+  // Whether to follow today's ayah with its tafseer (التفسير الميسر) as a
+  // silent message (no notification sound). On by default; toggled with
+  // /tafsir. Skipped automatically if the ayah has no seeded tafseer.
+  tafseerEnabled Boolean @default(true) @map("tafseer_enabled")
 
   trackId Int @map("track_id")
   // The entry the subscriber is currently on. Null means "not started yet";

@@ -23,8 +23,9 @@ import { toArabicDigits } from './arabic';
 /** Telegram's hard limit on message length (characters). */
 export const TELEGRAM_MAX = 4096;
 // We pack messages up to a slightly smaller size to leave margin for the way
-// Telegram counts emoji and any future small wording changes.
-const SAFE_LIMIT = 4000;
+// Telegram counts emoji and any future small wording changes. Shared with the
+// tafseer formatter so both split at the same safe size.
+export const SAFE_LIMIT = 4000;
 
 // Marker appended to today's new ayah, the last line of the passage, so the eye
 // lands on it as the newest ayah after reading up to it. The line is

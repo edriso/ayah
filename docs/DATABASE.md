@@ -39,9 +39,10 @@ explained further down.
 ## The pipeline
 
 ```
-pnpm data:fetch   download + verify + write the frozen JSON file
-pnpm db:deploy    create the tables by applying the migrations
-pnpm db:seed      fill Surah, Ayah, Track, TrackEntry from the JSON
+pnpm data:fetch          download + verify + write the frozen Quran JSON file
+pnpm data:fetch:tafseer  download + verify + write the frozen tafseer JSON file
+pnpm db:deploy           create the tables by applying the migrations
+pnpm db:seed             fill Surah, Ayah (text + tafseer), Track, TrackEntry
 ```
 
 ### Step 1: data:fetch
@@ -76,11 +77,14 @@ count table, and then fills:
 
 - `Surah` from the reference table in `src/database/reference/surahs.ts`, with
   `ayahCount` taken from the actual text.
-- `Ayah` from the text.
+- `Ayah` from the text, with each ayah's tafseer filled in from the tafseer
+  data file (when present).
 - `Track` `kids-hifz`.
 - `TrackEntry` in the kids order (surah 114 down to 1, ayat ascending).
 
-The seed is safe to run twice. If the text is already in place it stops.
+The seed is safe to run twice. If the text is already in place it stops seeding
+the text, but it still backfills the tafseer for any ayah missing it (so an
+older database, seeded before tafseer shipped, gets it on the next `db:seed`).
 
 ## The count table (the oracle)
 
@@ -124,3 +128,47 @@ removed from the text.
 A couple of surahs (At-Tin, Al-Qadr) carry the basmala with a slightly
 different mark, so the match is done on letters (diacritics removed) to catch
 those too.
+
+## The tafseer
+
+Each ayah also carries a short tafseer (commentary), shown to the subscriber as
+a silent message right after the daily ayah. We use **التفسير الميسر**
+(Al-Muyassar), the concise tafseer issued by the King Fahd Complex for the
+Printing of the Holy Quran. It is one plain paragraph per ayah, with no scholarly
+debate — a good fit for a daily/kids hifz bot. We never type tafseer by hand; it
+only comes from the fetch step.
+
+### Where it comes from and how it is checked
+
+`scripts/fetch-tafseer.ts` (run with `pnpm data:fetch:tafseer`) downloads the
+`ar.muyassar` edition from the [AlQuran.cloud](https://alquran.cloud) API and
+checks it exactly like the Quran text:
+
+- there must be exactly 6236 entries,
+- there must be exactly 114 surahs,
+- each surah must have the exact ayah count from the same oracle table,
+  numbered 1, 2, 3 ... with no gaps,
+- no entry may be empty.
+
+Only a fully correct download is saved, to `prisma/data/tafseer-muyassar.json`,
+with a SHA-256 of the text. Because the tafseer passes the same per-surah count
+check as the text, it lines up one-to-one with the ayat by `(surah, ayah)`, so
+the seed maps each tafseer onto its ayah by that key.
+
+### Independent cross-check
+
+The committed Al-Muyassar text was compared against a second, independent
+trusted source — [quranenc.com](https://quranenc.com), the Noble Quran
+Encyclopedia by the Tafsir Center (مركز تفسير), edition `arabic_moyassar`. The
+sampled ayat (including Al-Fatihah 1:2 and Ayat al-Kursi 2:255) matched
+character for character, confirming it is the genuine King Fahd Complex
+Al-Muyassar text.
+
+### Why it is optional and nullable
+
+`Ayah.tafseer` is nullable. The bot works without it: if an ayah has no tafseer
+seeded (e.g. a deployment that has not run `data:fetch:tafseer` yet), the daily
+send simply omits the tafseer message. The per-subscriber toggle
+`Subscriber.tafseerEnabled` (default true, set with `/tafsir`) decides whether a
+given person gets it at all. Like the text, the tafseer is read-only after
+seeding.
