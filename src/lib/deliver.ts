@@ -109,18 +109,6 @@ export async function deliverDueSubscribers(
         continue; // do NOT advance; retried next tick
       }
 
-      // The ayah was delivered. Follow it with the tafseer as SILENT messages
-      // (no notification sound) when the subscriber wants it. Wrapped so a
-      // tafseer hiccup never blocks the commit/advance below: the ayah is the
-      // delivery that matters, the tafseer is a quiet companion.
-      try {
-        for (const msg of tafseerMessagesFor(entry, sub.tafseerEnabled)) {
-          await bot.api.sendMessage(Number(sub.telegramId), msg, { disable_notification: true });
-        }
-      } catch (err) {
-        logger.error('Failed to send tafseer', { id: sub.id, error: String(err) });
-      }
-
       const committed = await commitDelivery({
         subscriberId: sub.id,
         entry,
@@ -132,6 +120,23 @@ export async function deliverDueSubscribers(
       });
       if (committed === 'sent') {
         stats.sent++;
+
+        // The ayah was delivered (and only now, on a real 'sent' commit — never
+        // on the loser of a /today race). Follow it with the tafseer as SILENT
+        // messages (no notification sound) when the subscriber wants it, so each
+        // ayah's tafseer arrives exactly once, with the day it is delivered.
+        // Wrapped so a tafseer hiccup never aborts the rest of the batch; the
+        // delivery is already committed.
+        try {
+          for (const msg of tafseerMessagesFor(entry, sub.tafseerEnabled)) {
+            await bot.api.sendMessage(Number(sub.telegramId), msg, {
+              disable_notification: true,
+            });
+          }
+        } catch (err) {
+          logger.error('Failed to send tafseer', { id: sub.id, error: String(err) });
+        }
+
         // If today's ayah finished a surah, follow it with the milestone
         // message + keyboard. Wrapped so a failure here never undoes the
         // delivery (already committed) or aborts the rest of the batch.
@@ -169,9 +174,15 @@ export interface TodayView {
   /** The messages to reply (today's ayah + review), or empty when nothing can
    *  be prepared (a dangling entry, or a finished non-looping track). */
   messages: string[];
-  /** The tafseer message(s) to send AFTER the ayah, silently (no notification
-   *  sound). Empty when the subscriber turned tafseer off or the ayah has no
-   *  seeded tafseer. The caller sends these with disable_notification. */
+  /**
+   * The tafseer message(s) to send AFTER the ayah, silently (no notification
+   * sound), when this view becomes a committed delivery. It is non-empty ONLY
+   * when `claim` is set (a real delivery is happening now): a re-show of an
+   * already-delivered ayah, or a peek on an off day / while paused, sends no
+   * tafseer, so the subscriber gets each ayah's tafseer once — with the day it
+   * is delivered. Also empty when tafseer is off or the ayah has none. The
+   * caller sends these with disable_notification, only on a 'sent' commit.
+   */
   tafseer: string[];
   /**
    * Set when this view should be COMMITTED as today's delivery (the user pulled
@@ -231,9 +242,11 @@ export async function buildTodayView(
     const entry = await getEntryById(delivered.trackEntryId);
     if (!entry) return { messages: [], tafseer: [], claim: null, alreadyDelivered: true };
     const content = await buildDailyContent(entry, sub.reviewCount);
+    // A re-show: the subscriber already received this ayah's tafseer the day it
+    // was delivered, so do not send it again.
     return {
       messages: formatDailyMessages(content),
-      tafseer: tafseerMessagesFor(entry, sub.tafseerEnabled),
+      tafseer: [],
       claim: null,
       alreadyDelivered: true,
     };
@@ -245,7 +258,6 @@ export async function buildTodayView(
     return { messages: [], tafseer: [], claim: null, alreadyDelivered: delivered !== null };
   const content = await buildDailyContent(entry, sub.reviewCount);
   const messages = formatDailyMessages(content);
-  const tafseer = tafseerMessagesFor(entry, sub.tafseerEnabled);
 
   // Claim it as today's delivery only when today is genuinely free: not already
   // delivered, an active day, and not paused. A reposition on an
@@ -263,6 +275,10 @@ export async function buildTodayView(
       loops: track?.loops ?? false,
     };
   }
+  // Tafseer accompanies a real (claimed) delivery only — not a peek on an off
+  // day or while paused — so the subscriber gets each ayah's tafseer once, the
+  // day it is actually delivered (here, or at the next scheduled send).
+  const tafseer = claim ? tafseerMessagesFor(entry, sub.tafseerEnabled) : [];
   return { messages, tafseer, claim, alreadyDelivered: delivered !== null };
 }
 

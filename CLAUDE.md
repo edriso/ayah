@@ -69,15 +69,25 @@ minute. For each active, non-blocked subscriber:
 
 One subscriber failing is caught and never stops the rest of the batch.
 
-After a successful ayah send (and before the milestone below), the bot follows
-it with the ayah's tafseer as one or more SILENT messages (`disable_notification`,
-so no second notification sound), when the subscriber has tafseer on
-(`Subscriber.tafseerEnabled`, default true) and the ayah has a seeded tafseer.
-The tafseer is for TODAY's ayah only, never the review block. It is wrapped so a
-tafseer hiccup never blocks the commit/advance: the ayah is the delivery that
-matters, the tafseer is a quiet companion (`tafseerMessagesFor` in deliver.ts,
-`formatTafseerMessages` in `src/core/tafseer.ts`). `/today` and the reposition
-flow send it the same way via `TodayView.tafseer`.
+Right after an ayah is delivered, the bot follows it with that ayah's tafseer as
+one or more SILENT messages (`disable_notification`, so no second notification
+sound), when the subscriber has tafseer on (`Subscriber.tafseerEnabled`, default
+true) and the ayah has a seeded tafseer. The tafseer is for TODAY's ayah only,
+never the review block.
+
+It is tied to the DELIVERY, not to showing the ayah: it is sent only on a real
+`commitDelivery` returning 'sent', so each ayah's tafseer arrives exactly once —
+the day that ayah is delivered. A later `/today` that just re-shows the same
+already-delivered ayah, or a peek on an off day / while paused, sends the ayah
+again but NOT the tafseer. Changing surah re-points the position; the new ayah's
+tafseer then arrives the first time that ayah is actually delivered (now, if the
+reposition claims a free day; otherwise at the next scheduled send). Because both
+the scheduler and `/today` gate on the 'sent' commit, the unique
+(subscriber, date) lock guarantees the tafseer is sent once even in the
+sub-second race. The send is wrapped so a tafseer hiccup never aborts the rest of
+the batch (the delivery is already committed). See `tafseerMessagesFor` and the
+claim-gated `TodayView.tafseer` in deliver.ts, and `formatTafseerMessages` in
+`src/core/tafseer.ts`.
 
 `/today` and repositioning (`/surah` and the surah / onboarding buttons) deliver
 today's ayah the same way: they reuse `buildTodayView` + `commitDelivery`, so a

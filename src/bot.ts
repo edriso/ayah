@@ -176,16 +176,6 @@ async function sendTodayView(
   now: Date,
 ): Promise<void> {
   for (const message of view.messages) await ctx.reply(message);
-  // The tafseer follows the ayah SILENTLY (no notification sound). Wrapped so a
-  // tafseer hiccup never blocks claiming the day below — the ayah is what
-  // matters; the tafseer is a quiet companion.
-  try {
-    for (const message of view.tafseer) {
-      await ctx.reply(message, { disable_notification: true });
-    }
-  } catch (err) {
-    logger.warn('Failed to send tafseer for /today', { subscriberId: sub.id, error: String(err) });
-  }
   if (view.claim) {
     const committed = await commitDelivery({
       subscriberId: sub.id,
@@ -196,10 +186,24 @@ async function sendTodayView(
       startedAt: sub.startedAt,
       now,
     });
-    // Celebrate only on a real advance. If commitDelivery returned 'duplicate'
-    // (the scheduler raced in and delivered the same day first) the position
-    // did NOT advance here, so a milestone would be a spurious second one.
+    // Send the tafseer and celebrate only on a real advance. If commitDelivery
+    // returned 'duplicate' (the scheduler raced in and delivered the same day
+    // first) the position did NOT advance here, so re-sending the tafseer or a
+    // milestone would be a spurious duplicate. view.tafseer is itself non-empty
+    // only when this view carried a claim, so a re-show or peek sends nothing.
     if (committed === 'sent') {
+      // The tafseer follows the ayah SILENTLY (no notification sound). Wrapped
+      // so a tafseer hiccup never aborts the milestone or the reply flow.
+      try {
+        for (const message of view.tafseer) {
+          await ctx.reply(message, { disable_notification: true });
+        }
+      } catch (err) {
+        logger.warn('Failed to send tafseer for /today', {
+          subscriberId: sub.id,
+          error: String(err),
+        });
+      }
       const completion = await buildCompletionMessage(
         view.claim.entry,
         view.claim.totalEntries,

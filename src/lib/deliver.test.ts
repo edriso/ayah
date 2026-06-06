@@ -156,9 +156,10 @@ describe('buildTodayView (/today claims today)', () => {
   });
 });
 
-describe('buildTodayView tafseer (silent companion)', () => {
-  it('includes the tafseer when enabled and the ayah has one', async () => {
+describe('buildTodayView tafseer (sent once, with the delivery)', () => {
+  it('includes the tafseer when the view claims a delivery (enabled + has one)', async () => {
     const view = await buildTodayView(todaySub(), NOW);
+    expect(view.claim).not.toBeNull();
     expect(view.tafseer.length).toBeGreaterThan(0);
     expect(view.tafseer[0]).toContain('التفسير الميسر');
     expect(view.tafseer[0]).toContain('إخلاص العبادة');
@@ -176,11 +177,39 @@ describe('buildTodayView tafseer (silent companion)', () => {
     expect(view.tafseer).toEqual([]);
   });
 
-  it('re-shows the tafseer alongside an already-delivered ayah', async () => {
+  it('does NOT re-send the tafseer on an already-delivered re-show', async () => {
     h.getDeliveryFor.mockResolvedValue({ trackEntryId: 7 });
     const view = await buildTodayView(todaySub(), NOW);
     expect(view.alreadyDelivered).toBe(true);
+    expect(view.messages.length).toBeGreaterThan(0); // the ayah is still shown
+    expect(view.tafseer).toEqual([]); // but not the tafseer again
+  });
+
+  it('does NOT send the tafseer on an off-day peek (no claim)', async () => {
+    // activeDays = 2 is Tuesday only, so Monday (NOW) is off.
+    const view = await buildTodayView(todaySub({ activeDays: 2 }), NOW);
+    expect(view.claim).toBeNull();
+    expect(view.tafseer).toEqual([]);
+  });
+
+  it('does NOT send the tafseer on a peek while paused (no claim)', async () => {
+    const view = await buildTodayView(todaySub({ pausedAt: new Date() }), NOW);
+    expect(view.claim).toBeNull();
+    expect(view.tafseer).toEqual([]);
+  });
+
+  it('sends the tafseer for a NEW ayah when a reposition claims a free day', async () => {
+    const view = await buildTodayView(todaySub(), NOW, { reposition: true });
+    expect(view.claim).not.toBeNull();
     expect(view.tafseer.length).toBeGreaterThan(0);
+  });
+
+  it('does NOT send the tafseer for a reposition PREVIEW on an already-delivered day', async () => {
+    h.getDeliveryFor.mockResolvedValue({ trackEntryId: 7 });
+    const view = await buildTodayView(todaySub(), NOW, { reposition: true });
+    expect(view.claim).toBeNull(); // a preview, not a delivery
+    expect(view.messages.length).toBeGreaterThan(0); // the new ayah is previewed
+    expect(view.tafseer).toEqual([]); // tafseer waits for the real send
   });
 });
 
@@ -237,12 +266,23 @@ describe('deliverDueSubscribers (scheduler sends tafseer silently)', () => {
     expect(tafseerCall).toBeUndefined();
   });
 
-  it('does not let a tafseer send failure block the delivery commit', async () => {
+  it('does not let a tafseer send failure block the delivery', async () => {
     api.sendMessage.mockRejectedValue(new Error('boom'));
     const stats = await deliverDueSubscribers(bot, NOW);
-    // The ayah (via sendMessages) succeeded, so the delivery is still committed.
+    // The ayah (via sendMessages) succeeded and was committed BEFORE the tafseer
+    // send, so a tafseer failure cannot undo the delivery.
     expect(h.commitDelivery).toHaveBeenCalledTimes(1);
     expect(stats.sent).toBe(1);
+  });
+
+  it('does not send the tafseer when the commit loses a race (duplicate)', async () => {
+    h.commitDelivery.mockResolvedValue('duplicate');
+    const stats = await deliverDueSubscribers(bot, NOW);
+    expect(stats.sent).toBe(0);
+    expect(stats.skipped).toBe(1);
+    // The other path (e.g. /today) already delivered this day with its tafseer,
+    // so this run must not send a second tafseer.
+    expect(api.sendMessage).not.toHaveBeenCalled();
   });
 });
 

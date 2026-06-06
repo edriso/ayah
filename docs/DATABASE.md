@@ -132,7 +132,9 @@ those too.
 ## The tafseer
 
 Each ayah also carries a short tafseer (commentary), shown to the subscriber as
-a silent message right after the daily ayah. We use **التفسير الميسر**
+a silent message right after the daily ayah — once, the day that ayah is
+delivered (a later `/today` re-show of the same ayah does not resend it). We use
+**التفسير الميسر**
 (Al-Muyassar), the concise tafseer issued by the King Fahd Complex for the
 Printing of the Holy Quran. It is one plain paragraph per ayah, with no scholarly
 debate — a good fit for a daily/kids hifz bot. We never type tafseer by hand; it
