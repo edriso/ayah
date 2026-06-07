@@ -24,6 +24,18 @@ export interface AudioSendOptions {
   caption?: string;
   /** Send without a notification sound (the ayah already notified). */
   silent?: boolean;
+  /**
+   * Track title shown in Telegram's in-app music player (and on the lock
+   * screen / Bluetooth controls), overriding whatever tag the source file
+   * carries. Telegram groups every audio in a chat into one playlist and
+   * auto-advances through it when a clip ends - behavior the sender cannot
+   * disable. Naming each clip (title + performer) keeps that playlist legible:
+   * when it auto-plays a neighboring ayah the player shows exactly what is
+   * playing instead of an unlabeled mystery clip.
+   */
+  title?: string;
+  /** Performer shown alongside the title in the music player (the reciter). */
+  performer?: string;
 }
 
 function audioFileId(message: Message): string | undefined {
@@ -51,6 +63,8 @@ export async function sendAudio(
   const other = {
     ...(opts.caption ? { caption: opts.caption } : {}),
     ...(opts.silent ? { disable_notification: true } : {}),
+    ...(opts.title ? { title: opts.title } : {}),
+    ...(opts.performer ? { performer: opts.performer } : {}),
   };
   const send = () => bot.api.sendAudio(Number(chatId), audio, other);
   try {

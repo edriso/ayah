@@ -55,6 +55,22 @@ describe('sendAudio', () => {
     });
   });
 
+  it('passes title and performer so the music player names the track', async () => {
+    const { bot, sendAudioMock } = fakeBot(() => ({ audio: { file_id: 'A' } }));
+    await sendAudio(bot, 123n, 'https://x/1.mp3', {
+      caption: '🎧 ...',
+      silent: true,
+      title: 'سورة الفاتحة، آية ١',
+      performer: 'الحصري (المعلِّم)',
+    });
+    expect(sendAudioMock).toHaveBeenCalledWith(123, 'https://x/1.mp3', {
+      caption: '🎧 ...',
+      disable_notification: true,
+      title: 'سورة الفاتحة، آية ١',
+      performer: 'الحصري (المعلِّم)',
+    });
+  });
+
   it('omits options when neither caption nor silent is given', async () => {
     const { bot, sendAudioMock } = fakeBot(() => ({ audio: { file_id: 'A' } }));
     await sendAudio(bot, 123n, 'https://x/1.mp3');
