@@ -26,7 +26,10 @@ developer can work on it.
   notification sound. The tafseer is on by default (`/tafsir`); the audio
   defaults to الحصري المعلِّم (the kids teacher style) and the reciter is picked
   with `/reciter` (seven reciters, or off). Both are sent once, the day the ayah
-  is delivered.
+  is delivered. They always match the reader's current settings: change the
+  reciter and the next ayah is recited in the new voice; jump to another surah
+  and the new ayah's audio and tafseer follow it; turn the tafseer off and it
+  stops — each taking effect from the next delivered ayah.
 - The Quran text is verified Tanzil Uthmani text, and the tafseer is the
   verified Al-Muyassar edition. Both live in read-only database tables and are
   never changed by the bot. The recitation audio is not stored in the repo (it

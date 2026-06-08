@@ -104,6 +104,26 @@ the batch (the delivery is already committed). See `tafseerMessagesFor` and the
 claim-gated `TodayView.tafseer` in deliver.ts, and `formatTafseerMessages` in
 `src/core/tafseer.ts`.
 
+Both the audio and the tafseer read the subscriber's CURRENT settings at send
+time, on every entry point (the scheduler, `/today`, and a reposition), so a
+setting change is honoured on the very next delivery with no extra wiring:
+
+- Switch voice with `/reciter <key>` (or pick "none"): the next ayah's clip uses
+  that reciter's CDN URL, and the `file_id` cache is keyed by
+  `(surah, ayah, reciter)`, so a changed voice is a cache MISS and fetches the
+  new reciter — it never serves the old voice's cached clip. "none" sends no
+  audio at all.
+- Turn the tafseer on/off with `/tafsir`: the next delivered ayah includes (or
+  omits) its tafseer accordingly. It is for TODAY's ayah only, never the review
+  block.
+- Jump with `/surah` (or a surah / onboarding button): the audio and tafseer are
+  for the NEW ayah, because the reposition delivers from the new position; they
+  arrive the first time that ayah is actually delivered (now if it claims a free
+  day, otherwise at the next scheduled send).
+- Change the review count with `/review N`: that only resizes the review block
+  shown with the ayah; the audio and tafseer are always for the single daily
+  ayah, so they are unaffected.
+
 `/today` and repositioning (`/surah` and the surah / onboarding buttons) deliver
 today's ayah the same way: they reuse `buildTodayView` + `commitDelivery`, so a
 subscriber who reads early "claims" the day (records the delivery and advances)
