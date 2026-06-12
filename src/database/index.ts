@@ -11,6 +11,7 @@ export type {
   TrackEntry,
   Subscriber,
   DeliveryLog,
+  Tafseer,
 } from './generated/prisma/client';
 
 // Services
@@ -19,9 +20,11 @@ export * from './services/subscriber.service';
 export * from './services/pause.service';
 export * from './services/delivery.service';
 export * from './services/audio.service';
+export * from './services/tafseer.service';
 
 // Reference data
 export * from './reference/surahs';
 export * from './reference/ayah-counts';
 export * from './reference/curriculum';
 export * from './reference/reciters';
+export * from './reference/tafseers';

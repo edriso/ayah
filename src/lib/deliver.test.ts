@@ -21,6 +21,8 @@ const h = vi.hoisted(() => ({
   getCachedAyahAudioId: vi.fn(),
   cacheAyahAudioId: vi.fn(),
   sendAudio: vi.fn(),
+  // Tafseer path: the text now comes from the Tafseer table, not the ayah row.
+  getTafseerText: vi.fn(),
 }));
 
 vi.mock('../database', () => ({
@@ -43,6 +45,27 @@ vi.mock('../database', () => ({
     key === 'none'
       ? undefined
       : { key, nameAr: 'الحصري (المعلِّم)', folder: 'Husary_Muallim_128kbps' },
+  // Tafseer: the text service, plus a faithful-enough edition lookup. The
+  // default/Al-Muyassar is inline (quranenc link); "ibnkathir" is the long
+  // preview edition (quran.com link), so tests can exercise both shapes.
+  getTafseerText: h.getTafseerText,
+  tafseerOrDefault: (key: string) =>
+    key === 'ibnkathir'
+      ? {
+          key: 'ibnkathir',
+          nameAr: 'تفسير ابن كثير',
+          kind: 'preview',
+          linkHost: 'quran.com',
+          linkRef: 'ar-tafsir-ibn-kathir',
+        }
+      : {
+          key: key || 'muyassar',
+          nameAr: 'التفسير الميسر',
+          kind: 'inline',
+          linkHost: 'quranenc',
+          linkRef: 'arabic_moyassar',
+        },
+  DEFAULT_TAFSEER: 'muyassar',
   getTrackByKey: vi.fn(),
   getEntryForAyah: vi.fn(),
   KIDS_TRACK: { key: 'kids-hifz' },
@@ -63,8 +86,9 @@ const CONTENT = {
   today: { numberInSurah: 1, text: 'قُلْ هُوَ ٱللَّهُ أَحَدٌ' },
   review: [],
 };
-// A resolved entry (shape only matters by reference for the claim). The ayah
-// carries a tafseer so the tafseer message can be built from the entry.
+// A resolved entry (shape only matters by reference for the claim). The
+// tafseer text now comes from getTafseerText(edition, surah, ayah), not the
+// ayah row, so the entry just needs its (surah, ayah) coordinates.
 const ENTRY = {
   id: 7,
   position: 3,
@@ -73,7 +97,6 @@ const ENTRY = {
     surahNumber: 112,
     numberInSurah: 1,
     text: 'قُلْ',
-    tafseer: 'إخلاص العبادة لله وحده.',
     surah: { number: 112, nameAr: 'الإخلاص' },
   },
 };
@@ -89,6 +112,8 @@ function todaySub(over: Record<string, unknown> = {}) {
     startedAt: null,
     reviewCount: 0,
     tafseerEnabled: true,
+    tafseerEdition: 'muyassar',
+    tafseerFormat: 'text',
     ...over,
   } as never;
 }
@@ -101,6 +126,7 @@ beforeEach(() => {
   h.countTrackEntries.mockResolvedValue(6236);
   h.getTrackById.mockResolvedValue({ id: 1, loops: true });
   h.getEntryById.mockResolvedValue(ENTRY);
+  h.getTafseerText.mockResolvedValue('إخلاص العبادة لله وحده.');
 });
 
 describe('buildTodayView (/today claims today)', () => {
@@ -176,8 +202,9 @@ describe('buildTodayView tafseer (sent once, with the delivery)', () => {
     const view = await buildTodayView(todaySub(), NOW);
     expect(view.claim).not.toBeNull();
     expect(view.tafseer.length).toBeGreaterThan(0);
-    expect(view.tafseer[0]).toContain('التفسير الميسر');
-    expect(view.tafseer[0]).toContain('إخلاص العبادة');
+    expect(view.tafseer[0].text).toContain('التفسير الميسر');
+    expect(view.tafseer[0].text).toContain('إخلاص العبادة');
+    expect(view.tafseer[0].readMoreUrl).toBeUndefined(); // inline text, no button
   });
 
   it('omits the tafseer when the subscriber turned it off', async () => {
@@ -186,10 +213,47 @@ describe('buildTodayView tafseer (sent once, with the delivery)', () => {
     expect(view.messages.length).toBeGreaterThan(0); // the ayah is unaffected
   });
 
-  it('omits the tafseer when the ayah has none seeded', async () => {
-    h.resolveTargetEntry.mockResolvedValue({ ...ENTRY, ayah: { ...ENTRY.ayah, tafseer: null } });
+  it('omits the tafseer when the chosen edition has no seeded text', async () => {
+    h.getTafseerText.mockResolvedValue(null);
     const view = await buildTodayView(todaySub(), NOW);
     expect(view.tafseer).toEqual([]);
+  });
+
+  it('sends a link (no stored text) in link format, as a read-more button', async () => {
+    h.getTafseerText.mockResolvedValue(null); // link mode must not need text
+    const view = await buildTodayView(todaySub({ tafseerFormat: 'link' }), NOW);
+    expect(view.claim).not.toBeNull();
+    expect(view.tafseer.length).toBeGreaterThan(0);
+    expect(view.tafseer[0].readMoreUrl).toBe(
+      'https://quranenc.com/ar/browse/arabic_moyassar/112/1',
+    );
+    expect(view.tafseer[0].text).not.toContain('https://'); // URL is the button, not in text
+    expect(h.getTafseerText).not.toHaveBeenCalled();
+  });
+
+  it('uses the chosen edition (label, link, and its stored rows)', async () => {
+    h.getTafseerText.mockResolvedValue('بداية تفسير ابن كثير.');
+    const view = await buildTodayView(todaySub({ tafseerEdition: 'ibnkathir' }), NOW);
+    expect(h.getTafseerText).toHaveBeenCalledWith('ibnkathir', 112, 1);
+    expect(view.tafseer[0].text).toContain('تفسير ابن كثير'); // the edition header
+  });
+
+  it('a preview edition in text format sends the opening plus a read-in-full button', async () => {
+    h.getTafseerText.mockResolvedValue('بداية تفسير ابن كثير لهذه الآية.');
+    const view = await buildTodayView(todaySub({ tafseerEdition: 'ibnkathir' }), NOW);
+    expect(view.tafseer).toHaveLength(1);
+    expect(view.tafseer[0].text).toContain('بداية تفسير ابن كثير');
+    expect(view.tafseer[0].text).toContain('بداية التفسير'); // the "this is the beginning" note
+    expect(view.tafseer[0].readMoreUrl).toBe(
+      'https://quran.com/112:1/tafsirs/ar-tafsir-ibn-kathir',
+    );
+  });
+
+  it('falls back to text format for an unrecognised tafseerFormat value', async () => {
+    h.getTafseerText.mockResolvedValue('نص التفسير.');
+    const view = await buildTodayView(todaySub({ tafseerFormat: 'garbage' }), NOW);
+    expect(h.getTafseerText).toHaveBeenCalled(); // text path, not link
+    expect(view.tafseer[0].text).toContain('نص التفسير');
   });
 
   it('does NOT re-send the tafseer on an already-delivered re-show', async () => {
@@ -243,6 +307,8 @@ describe('deliverDueSubscribers (scheduler sends audio + tafseer silently)', () 
       activeDays: 127,
       reviewCount: 0,
       tafseerEnabled: true,
+      tafseerEdition: 'muyassar',
+      tafseerFormat: 'text',
       reciter: 'husary-muallim',
       trackId: 1,
       startedAt: null,

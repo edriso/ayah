@@ -26,22 +26,41 @@ edited by application code.
 Tafseer (commentary)
 --------------------
 
-The tafseer used by this project is التفسير الميسر (Al-Muyassar), the concise
-tafseer issued by the King Fahd Complex for the Printing of the Holy Quran
-(مجمع الملك فهد لطباعة المصحف الشريف). It was downloaded with
-`pnpm data:fetch:tafseer` from the AlQuran.cloud API (edition "ar.muyassar")
-and is stored, unchanged, at:
+A subscriber chooses which tafseer they receive (see
+src/database/reference/tafseers.ts). Each edition is downloaded with
+`pnpm data:fetch:tafseer` from an authoritative source, verified on download
+(6236 entries, correct count per surah, every entry non-empty), reproduced
+unchanged, and attributed to its publisher. Each is used for non-commercial
+educational purposes (helping people understand and memorize the Quran), and
+none is edited by application code.
 
-    prisma/data/tafseer-muyassar.json
+  - التفسير الميسر (Al-Tafsir Al-Muyassar) — the concise tafseer of the King
+    Fahd Complex for the Printing of the Holy Quran (مجمع الملك فهد لطباعة
+    المصحف الشريف). From the AlQuran.cloud API (edition "ar.muyassar").
+    Copyright (C) King Fahd Complex for the Printing of the Holy Quran.
+    Stored at prisma/data/tafseer-muyassar.json
 
-التفسير الميسر (Al-Tafsir Al-Muyassar)
-Copyright (C) King Fahd Complex for the Printing of the Holy Quran
+  - المختصر في التفسير (Al-Mukhtasar) — the concise tafseer of the Tafsir
+    Center for Quranic Studies (مركز تفسير), published in the King Fahd
+    Complex's Noble Quran Encyclopedia. From the QuranEnc API (edition
+    "arabic_mokhtasar"). Copyright (C) Tafsir Center for Quranic Studies.
+    Stored at prisma/data/tafseer-mukhtasar.json
 
-The tafseer is reproduced unchanged and attributed to its publisher, the King
-Fahd Complex. Like the Quran text, it is verified on download (6236 entries,
-correct count per surah) and is never edited by application code. It is used
-for non-commercial educational purposes (helping people understand and
-memorize the Quran).
+  - تفسير السعدي (Tayseer al-Karim ar-Rahman) by Abd ar-Rahman as-Sa'di.
+    From the Quran.Foundation API (the data behind quran.com, edition
+    "ar-tafseer-al-saddi"); its HTML is converted to plain text on download.
+    Stored at prisma/data/tafseer-saadi.json
+
+  - تفسير ابن كثير (Tafsir Ibn Kathir) by Ibn Kathir. This edition is long
+    (tens of thousands of characters per ayah), so — like the recitation audio
+    — its full text is NOT stored or redistributed here: only a bounded opening
+    (one message) is committed, and the bot links to the full text for that
+    ayah on quran.com. From the Quran.Foundation API (edition
+    "ar-tafsir-ibn-kathir"). Stored (opening only) at
+    prisma/data/tafseer-ibnkathir.json
+
+The per-ayah "read in full" links the bot builds, and the live sources above,
+are checked by `pnpm verify:tafseer`.
 
 Recitation audio
 ----------------

@@ -60,6 +60,8 @@ describe('settingsSummary status line', () => {
     activeDays: ALL_DAYS,
     reviewCount: 10,
     tafseerEnabled: true,
+    tafseerLabel: 'التفسير الميسر',
+    tafseerModeLabel: 'نصًّا',
     reciterLabel: 'الحصري (المعلِّم)',
     timezone: 'Africa/Cairo',
     pausedAt: null as Date | null,
@@ -69,8 +71,13 @@ describe('settingsSummary status line', () => {
     expect(settingsSummary(base)).toContain('يعمل');
   });
 
-  it('shows the tafseer line on or off', () => {
-    expect(settingsSummary(base)).toContain('• التفسير: مفعّل');
+  it('shows the tafseer line with edition and format when on, and just "off" when off', () => {
+    const on = settingsSummary({
+      ...base,
+      tafseerLabel: 'تفسير السعدي',
+      tafseerModeLabel: 'رابطًا',
+    });
+    expect(on).toContain('• التفسير: مفعّل (تفسير السعدي · رابطًا) 📖');
     expect(settingsSummary({ ...base, tafseerEnabled: false })).toContain('• التفسير: معطّل');
   });
 

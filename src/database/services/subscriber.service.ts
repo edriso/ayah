@@ -146,6 +146,28 @@ export function setReciter(subscriberId: number, reciter: string) {
 }
 
 /**
+ * Set which tafseer edition the subscriber receives. `edition` is an edition
+ * key (see reference/tafseers.ts); the caller validates it with isTafseerEdition.
+ */
+export function setTafseerEdition(subscriberId: number, edition: string) {
+  return prisma.subscriber.update({
+    where: { id: subscriberId },
+    data: { tafseerEdition: edition },
+  });
+}
+
+/**
+ * Set how the tafseer is delivered: "text" (inline) or "link". The caller
+ * validates it with isTafseerFormat.
+ */
+export function setTafseerFormat(subscriberId: number, format: string) {
+  return prisma.subscriber.update({
+    where: { id: subscriberId },
+    data: { tafseerFormat: format },
+  });
+}
+
+/**
  * Mark a subscriber as unreachable (they blocked the bot, or a send failed
  * with a 403). Send loops skip blocked subscribers. Cleared automatically
  * the next time they message the bot (see ensureSubscriber).

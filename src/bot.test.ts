@@ -21,6 +21,8 @@ vi.mock('./database', () => ({
   setTimezone: vi.fn(),
   setReviewCount: vi.fn(),
   setTafseerEnabled: vi.fn(),
+  setTafseerEdition: vi.fn(),
+  setTafseerFormat: vi.fn(),
   setReciter: vi.fn(),
   pauseSubscriber: vi.fn(),
   resumeSubscriber: vi.fn(),
@@ -40,6 +42,9 @@ vi.mock('./database', () => ({
   RECITER_NONE: 'none',
   reciterByKey: vi.fn(),
   isReciterChoice: vi.fn(),
+  TAFSEERS: [],
+  tafseerOrDefault: () => ({ key: 'muyassar', nameAr: 'التفسير الميسر', kind: 'inline' }),
+  isTafseerEdition: vi.fn(),
   ayahCountFor: vi.fn(),
 }));
 vi.mock('./lib/deliver', () => ({
@@ -47,6 +52,8 @@ vi.mock('./lib/deliver', () => ({
   buildCompletionMessage: h.buildCompletionMessage,
   deliverAyahAudio: h.deliverAyahAudio,
   previewAyah: vi.fn(),
+  // No read-more button for a plain inline-text tafseer message.
+  tafseerReplyMarkup: () => undefined,
 }));
 vi.mock('./scheduler', () => ({ runDeliveryOnce: vi.fn() }));
 vi.mock('./lib/logger', () => ({
@@ -71,6 +78,8 @@ const SUB = {
   currentEntryId: 50,
   reviewCount: 0,
   tafseerEnabled: true,
+  tafseerEdition: 'muyassar',
+  tafseerFormat: 'text',
   reciter: 'husary-muallim',
   timezone: 'UTC',
   activeDays: 127,
@@ -89,7 +98,7 @@ describe('sendAfterReposition', () => {
   it('claims a free day, then sends the audio and the (silent) tafseer', async () => {
     h.buildTodayView.mockResolvedValue({
       messages: ['the ayah'],
-      tafseer: ['📖 تفسير الآية ﴿١﴾ — التفسير الميسر\n\nالمعنى'],
+      tafseer: [{ text: '📖 تفسير الآية ﴿١﴾ — التفسير الميسر\n\nالمعنى' }],
       claim: { scheduledFor: '2026-06-01', entry: ENTRY, totalEntries: 6236, loops: true },
       alreadyDelivered: false,
     });
@@ -140,7 +149,7 @@ describe('sendAfterReposition', () => {
     h.commitDelivery.mockResolvedValue('duplicate');
     h.buildTodayView.mockResolvedValue({
       messages: ['the ayah'],
-      tafseer: ['📖 ...'],
+      tafseer: [{ text: '📖 ...' }],
       claim: { scheduledFor: '2026-06-01', entry: ENTRY, totalEntries: 6236, loops: true },
       alreadyDelivered: false,
     });

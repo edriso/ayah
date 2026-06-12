@@ -3,7 +3,7 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     environment: 'node',
-    include: ['src/**/*.test.ts'],
+    include: ['src/**/*.test.ts', 'scripts/**/*.test.ts'],
     env: {
       // config.ts throws at import if these are missing; the dummies let tests
       // that load it transitively run. dotenv never overrides real env. The

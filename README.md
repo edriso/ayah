@@ -21,20 +21,23 @@ developer can work on it.
   one. On long surahs the review is split across several messages so it never
   exceeds Telegram's size limit.
 - Right after the ayah, the bot can send that ayah's **recitation audio** (in a
-  reciter the person chooses, or none) and its **tafseer** (التفسير الميسر, the
-  concise King Fahd Complex tafseer) — both as **silent** messages, no second
-  notification sound. The tafseer is on by default (`/tafsir`); the audio
-  defaults to الحصري المعلِّم (the kids teacher style) and the reciter is picked
-  with `/reciter` (seven reciters, or off). Both are sent once, the day the ayah
-  is delivered. They always match the reader's current settings: change the
-  reciter and the next ayah is recited in the new voice; jump to another surah
-  and the new ayah's audio and tafseer follow it; turn the tafseer off and it
-  stops — each taking effect from the next delivered ayah.
-- The Quran text is verified Tanzil Uthmani text, and the tafseer is the
-  verified Al-Muyassar edition. Both live in read-only database tables and are
-  never changed by the bot. The recitation audio is not stored in the repo (it
-  is large); it is fetched per-ayah from a trusted CDN on first send and then
-  reused by Telegram file_id. See `docs/DATABASE.md`.
+  reciter the person chooses, or none) and its **tafseer** — both as **silent**
+  messages, no second notification sound. The tafseer is on by default; with
+  `/tafsir` the person chooses which one (التفسير الميسر — the default, المختصر,
+  السعدي, or ابن كثير) and how it arrives (the text inline, or a link to read it
+  in full). The audio defaults to الحصري المعلِّم (the kids teacher style) and
+  the reciter is picked with `/reciter` (seven reciters, or off). Both are sent
+  once, the day the ayah is delivered, and always match the reader's current
+  settings: change the reciter and the next ayah is recited in the new voice;
+  switch the tafseer edition and the next one follows; jump to another surah and
+  the new ayah's audio and tafseer follow it — each taking effect from the next
+  delivered ayah.
+- The Quran text is verified Tanzil Uthmani text, and every tafseer edition is
+  verified against the same count oracle and comes from an authoritative source.
+  They live in read-only database tables and are never changed by the bot. The
+  recitation audio is not stored in the repo (it is large) — and neither is the
+  full Ibn Kathir tafseer; both are fetched/linked rather than committed in
+  full. See `docs/DATABASE.md`.
 
 ## Project layout
 
@@ -97,7 +100,8 @@ refuses to write anything that does not match.
 - `/time HH:MM` set the daily send time
 - `/days` pick which weekdays you receive ayat
 - `/review N` how many previous ayat to review (0 to 20, default 10)
-- `/tafsir on|off` turn the silent tafseer after the ayah on or off (default on)
+- `/tafsir` the silent tafseer after the ayah: turn it on/off, choose which one
+  (التفسير الميسر / المختصر / السعدي / ابن كثير), and how it arrives (text or link)
 - `/reciter` pick the reciter for the silent recitation audio, or turn it off
 - `/timezone Area/City` set your timezone
 - `/pause` take a break, or come back from one (one toggle command)

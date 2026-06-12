@@ -25,8 +25,14 @@ Ayah (6236 rows, read-only)
   surahNumber     FK -> Surah.number
   numberInSurah   1..ayahCount
   text            Uthmani text, exactly as Tanzil shipped it
-  tafseer         Al-Muyassar tafseer for this ayah (nullable), read-only
   unique(surahNumber, numberInSurah)
+
+Tafseer (commentary, read-only, one row per edition x ayah)
+  edition        part of PK (edition key, see reference/tafseers.ts)
+  surahNumber    part of PK
+  numberInSurah  part of PK
+  text           full tafseer, or a one-message opening for a "preview" edition
+  primary key(edition, surahNumber, numberInSurah)
 
 Track (the curriculum)
   id     PK
@@ -52,6 +58,8 @@ Subscriber (who we deliver to)
   activeDays      7-bit mask, bit 0 = Monday .. bit 6 = Sunday
   reviewCount     previous ayat to review (0..20, default 10)
   tafseerEnabled  send the ayah's tafseer (silently) after it (default true)
+  tafseerEdition  which tafseer edition (key, default "muyassar")
+  tafseerFormat   "text" (inline) | "link" (default "text")
   reciter         recitation-audio reciter key, or "none" (default husary-muallim)
   trackId         FK -> Track.id
   currentEntryId  FK -> TrackEntry.id, null = not started

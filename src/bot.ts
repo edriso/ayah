@@ -7,6 +7,8 @@ import {
   setTimezone,
   setReviewCount,
   setTafseerEnabled,
+  setTafseerEdition,
+  setTafseerFormat,
   setReciter,
   pauseSubscriber,
   resumeSubscriber,
@@ -26,6 +28,9 @@ import {
   RECITER_NONE,
   reciterByKey,
   isReciterChoice,
+  TAFSEERS,
+  tafseerOrDefault,
+  isTafseerEdition,
   ayahCountFor,
   type EntryWithAyah,
   type Subscriber,
@@ -38,6 +43,7 @@ import {
   buildCompletionMessage,
   deliverAyahAudio,
   previewAyah,
+  tafseerReplyMarkup,
   type TodayView,
 } from './lib/deliver';
 import {
@@ -56,6 +62,7 @@ import {
   SURAH_NOOP,
 } from './lib/surah-keyboard';
 import { buildReciterKeyboard, RECITER_PICK_PREFIX } from './lib/reciter-keyboard';
+import { buildTafseerKeyboard, TAFSEER_PICK_PREFIX } from './lib/tafseer-keyboard';
 import { parseTime, isValidTimezone, parseSurahArg, parseAyahPreview } from './lib/parse';
 
 const bot = new Bot<Context>(config.botToken);
@@ -67,7 +74,13 @@ const ONBOARD_PICK = 'ayah:onb:pick';
 const ONBOARD_MUSHAF = 'ayah:onb:mushaf';
 const ORDER_PICK_PREFIX = 'ayah:order:';
 const PAUSE_TOGGLE = 'ayah:pause:toggle';
-const TAFSEER_TOGGLE = 'ayah:tafseer:toggle';
+// The tafseer card (on/off, edition, format) and its controls. The pick prefix
+// "ayah:taf:src:" (see tafseer-keyboard.ts) is distinct from these exact-match
+// strings, so a "srcopen" button never matches the "src:<key>" pick handler.
+const TAFSEER_OPEN = 'ayah:taf:card'; // open the tafseer card from /settings
+const TAFSEER_TOGGLE = 'ayah:taf:onoff'; // turn the tafseer on/off
+const TAFSEER_FORMAT_TOGGLE = 'ayah:taf:fmt'; // switch text <-> link
+const TAFSEER_SOURCE_OPEN = 'ayah:taf:srcopen'; // open the edition picker
 // Opens the reciter picker from the /settings keyboard. A distinct prefix (no
 // "ayah:reciter:" segment) so it never matches the reciter-pick handler.
 const RECITER_OPEN = 'ayah:reciter-open';
@@ -113,6 +126,8 @@ async function settingsText(sub: Subscriber): Promise<string> {
       : undefined,
     orderKey: progress?.orderKey,
     deliveredCount,
+    tafseerLabel: tafseerLabelFor(sub.tafseerEdition),
+    tafseerModeLabel: tafseerModeLabelFor(sub.tafseerFormat),
     reciterLabel: reciterLabelFor(sub.reciter),
   });
 }
@@ -123,6 +138,17 @@ function reciterLabelFor(reciter: string): string {
   return reciterByKey(reciter)?.nameAr ?? COPY.reciterNoneLabel;
 }
 
+/** The Arabic name of a subscriber's tafseer edition (falls back to the default
+ *  for an unknown/dropped key, so the label never goes blank). */
+function tafseerLabelFor(edition: string): string {
+  return tafseerOrDefault(edition).nameAr;
+}
+
+/** The Arabic label for a subscriber's tafseer delivery format. */
+function tafseerModeLabelFor(format: string): string {
+  return format === 'link' ? COPY.tafsirModeLink : COPY.tafsirModeText;
+}
+
 /** Set a subscriber's reciter (already validated by the caller) and reply with
  *  the matching confirmation. Shared by /reciter and the picker buttons. */
 async function applyReciter(ctx: Context, subscriberId: number, choice: string): Promise<void> {
@@ -131,13 +157,14 @@ async function applyReciter(ctx: Context, subscriberId: number, choice: string):
   await ctx.reply(reciter ? COPY.reciterSet(reciter.nameAr) : COPY.reciterDisabled);
 }
 
-/** The small keyboard under /settings: a pause/resume toggle, a tafseer
- *  on/off toggle, and a shortcut to pick the starting surah. */
-function buildSettingsKeyboard(paused: boolean, tafseerEnabled: boolean): InlineKeyboard {
+/** The small keyboard under /settings: a pause/resume toggle, a shortcut to the
+ *  tafseer card, a shortcut to the reciter picker, and one to pick the starting
+ *  surah. (The tafseer on/off toggle lives inside the tafseer card now.) */
+function buildSettingsKeyboard(paused: boolean): InlineKeyboard {
   return new InlineKeyboard()
     .text(paused ? COPY.resumeBtn : COPY.pauseBtn, PAUSE_TOGGLE)
     .row()
-    .text(tafseerEnabled ? COPY.tafsirOffBtn : COPY.tafsirOnBtn, TAFSEER_TOGGLE)
+    .text(COPY.settingsTafsirBtn, TAFSEER_OPEN)
     .row()
     .text(COPY.settingsReciterBtn, RECITER_OPEN)
     .row()
@@ -148,6 +175,38 @@ function buildSettingsKeyboard(paused: boolean, tafseerEnabled: boolean): Inline
  *  marked. Shared by /reciter and the /settings reciter button. */
 function buildReciterPicker(currentReciter: string): InlineKeyboard {
   return buildReciterKeyboard(RECITERS, currentReciter, RECITER_NONE, COPY.reciterNoneLabel);
+}
+
+/** The tafseer card text: the current on/off state, edition, and format. */
+function tafseerCardText(sub: Subscriber): string {
+  return COPY.tafsirCard(
+    sub.tafseerEnabled,
+    tafseerLabelFor(sub.tafseerEdition),
+    tafseerModeLabelFor(sub.tafseerFormat),
+  );
+}
+
+/** The tafseer card keyboard: on/off, choose edition, switch text<->link. */
+function buildTafseerCardKeyboard(sub: Subscriber): InlineKeyboard {
+  const toLink = sub.tafseerFormat !== 'link'; // tapping switches to the other format
+  return new InlineKeyboard()
+    .text(sub.tafseerEnabled ? COPY.tafsirOffBtn : COPY.tafsirOnBtn, TAFSEER_TOGGLE)
+    .row()
+    .text(COPY.tafsirSourceBtn, TAFSEER_SOURCE_OPEN)
+    .row()
+    .text(toLink ? COPY.tafsirToLinkBtn : COPY.tafsirToTextBtn, TAFSEER_FORMAT_TOGGLE);
+}
+
+/** The tafseer edition picker for a subscriber, with their current choice
+ *  marked and a hint on the long (preview) edition. Shared by /tafsir and the
+ *  card's "choose tafseer" button. */
+function buildTafseerPicker(currentEdition: string): InlineKeyboard {
+  const editions = TAFSEERS.map((t) => ({
+    key: t.key,
+    nameAr: t.nameAr,
+    note: t.kind === 'preview' ? COPY.tafsirPreviewNote : undefined,
+  }));
+  return buildTafseerKeyboard(editions, currentEdition);
 }
 
 /** The onboarding chooser shown to a brand-new subscriber on /start. */
@@ -238,7 +297,10 @@ async function sendTodayView(
       // milestone or the reply flow.
       try {
         for (const message of view.tafseer) {
-          await ctx.reply(message, { disable_notification: true });
+          await ctx.reply(message.text, {
+            disable_notification: true,
+            reply_markup: tafseerReplyMarkup(message),
+          });
         }
       } catch (err) {
         logger.warn('Failed to send tafseer for /today', {
@@ -316,7 +378,7 @@ bot.command('settings', async (ctx) => {
   const sub = await subscriberFor(ctx);
   if (!sub) return;
   await ctx.reply(await settingsText(sub), {
-    reply_markup: buildSettingsKeyboard(sub.pausedAt !== null, sub.tafseerEnabled),
+    reply_markup: buildSettingsKeyboard(sub.pausedAt !== null),
   });
 });
 
@@ -416,24 +478,34 @@ bot.command('review', async (ctx) => {
   await ctx.reply(COPY.reviewUpdated(count));
 });
 
-// /tafsir [on|off]: turn the daily tafseer (sent silently after the ayah) on
-// or off. With no argument, show the current state and how to change it.
+// /tafsir [on|off|<edition>]: the tafseer (sent silently after the ayah). With
+// no argument, open the tafseer card (on/off + edition + format). "on"/"off"
+// are quick toggles; an edition key (e.g. "/tafsir saadi") is a power-user
+// shortcut to switch tafseer.
 bot.command('tafsir', async (ctx) => {
   const sub = await subscriberFor(ctx);
   if (!sub) return;
   const arg = commandArg(ctx, 'tafsir')?.toLowerCase();
   if (!arg) {
-    await ctx.reply(COPY.tafsirUsage(sub.tafseerEnabled));
+    await ctx.reply(tafseerCardText(sub), { reply_markup: buildTafseerCardKeyboard(sub) });
     return;
   }
   const on = ['on', '1', 'تشغيل', 'نعم'].includes(arg);
   const off = ['off', '0', 'إيقاف', 'ايقاف', 'لا'].includes(arg);
-  if (!on && !off) {
-    await ctx.reply(COPY.tafsirInvalid);
+  if (on || off) {
+    await setTafseerEnabled(sub.id, on);
+    await ctx.reply(COPY.tafsirUpdated(on));
     return;
   }
-  await setTafseerEnabled(sub.id, on);
-  await ctx.reply(COPY.tafsirUpdated(on));
+  if (isTafseerEdition(arg)) {
+    await setTafseerEdition(sub.id, arg);
+    // If the tafseer is off, picking an edition would silently do nothing;
+    // remind them how to turn it on.
+    const note = sub.tafseerEnabled ? '' : `\n${COPY.tafsirOffReminder}`;
+    await ctx.reply(COPY.tafsirSourceSet(tafseerLabelFor(arg)) + note);
+    return;
+  }
+  await ctx.reply(COPY.tafsirInvalid);
 });
 
 // /reciter [key|none]: choose the reciter for the daily ayah's recitation audio
@@ -759,15 +831,39 @@ bot.callbackQuery(PAUSE_TOGGLE, async (ctx) => {
   if (fresh) {
     await ctx
       .editMessageText(await settingsText(fresh), {
-        reply_markup: buildSettingsKeyboard(fresh.pausedAt !== null, fresh.tafseerEnabled),
+        reply_markup: buildSettingsKeyboard(fresh.pausedAt !== null),
       })
       .catch(ignoreNotModified);
   }
   await ctx.answerCallbackQuery({ text: wasPaused ? 'عُدت من الراحة ✅' : 'في وضع الراحة ⏸️' });
 });
 
-// ─── Settings tafseer toggle ────────────────────────────────────────
+// ─── Tafseer card ───────────────────────────────────────────────────
 
+/** Re-render the tafseer card in place from a fresh read, so its status lines
+ *  and buttons reflect the change just made. Shared by the card's buttons. */
+async function rerenderTafseerCard(ctx: Context): Promise<void> {
+  const fresh = await subscriberFor(ctx);
+  if (!fresh) return;
+  await ctx
+    .editMessageText(tafseerCardText(fresh), { reply_markup: buildTafseerCardKeyboard(fresh) })
+    .catch(ignoreNotModified);
+}
+
+// Open the tafseer card in place from the /settings keyboard.
+bot.callbackQuery(TAFSEER_OPEN, async (ctx) => {
+  const sub = await subscriberFor(ctx);
+  if (!sub) {
+    await ctx.answerCallbackQuery();
+    return;
+  }
+  await ctx
+    .editMessageText(tafseerCardText(sub), { reply_markup: buildTafseerCardKeyboard(sub) })
+    .catch(ignoreNotModified);
+  await ctx.answerCallbackQuery();
+});
+
+// Turn the tafseer on/off, then re-render the card.
 bot.callbackQuery(TAFSEER_TOGGLE, async (ctx) => {
   const sub = await subscriberFor(ctx);
   if (!sub) {
@@ -776,17 +872,53 @@ bot.callbackQuery(TAFSEER_TOGGLE, async (ctx) => {
   }
   const enabled = !sub.tafseerEnabled;
   await setTafseerEnabled(sub.id, enabled);
-  // Re-render the whole settings card in place so the status line and the
-  // toggle button both reflect the new state, and toast the change.
-  const fresh = await subscriberFor(ctx);
-  if (fresh) {
-    await ctx
-      .editMessageText(await settingsText(fresh), {
-        reply_markup: buildSettingsKeyboard(fresh.pausedAt !== null, fresh.tafseerEnabled),
-      })
-      .catch(ignoreNotModified);
-  }
+  await rerenderTafseerCard(ctx);
   await ctx.answerCallbackQuery({ text: COPY.tafsirToggleAck(enabled) });
+});
+
+// Switch the delivery format (text <-> link), then re-render the card.
+bot.callbackQuery(TAFSEER_FORMAT_TOGGLE, async (ctx) => {
+  const sub = await subscriberFor(ctx);
+  if (!sub) {
+    await ctx.answerCallbackQuery();
+    return;
+  }
+  const toLink = sub.tafseerFormat !== 'link';
+  await setTafseerFormat(sub.id, toLink ? 'link' : 'text');
+  await rerenderTafseerCard(ctx);
+  await ctx.answerCallbackQuery({ text: COPY.tafsirFormatAck(toLink) });
+});
+
+// Open the tafseer edition picker in place from the card.
+bot.callbackQuery(TAFSEER_SOURCE_OPEN, async (ctx) => {
+  const sub = await subscriberFor(ctx);
+  if (!sub) {
+    await ctx.answerCallbackQuery();
+    return;
+  }
+  await ctx
+    .editMessageText(COPY.tafsirSourcePrompt, {
+      reply_markup: buildTafseerPicker(sub.tafseerEdition),
+    })
+    .catch(ignoreNotModified);
+  await ctx.answerCallbackQuery();
+});
+
+// Pick a tafseer edition: set it, then return to the card showing the new choice.
+bot.callbackQuery(new RegExp(`^${TAFSEER_PICK_PREFIX}(.+)$`), async (ctx) => {
+  const sub = await subscriberFor(ctx);
+  if (!sub) {
+    await ctx.answerCallbackQuery();
+    return;
+  }
+  const choice = ctx.match![1];
+  if (!isTafseerEdition(choice)) {
+    await ctx.answerCallbackQuery();
+    return;
+  }
+  await setTafseerEdition(sub.id, choice);
+  await rerenderTafseerCard(ctx);
+  await ctx.answerCallbackQuery({ text: COPY.tafsirSourceSet(tafseerLabelFor(choice)) });
 });
 
 // ─── Reciter picker ─────────────────────────────────────────────────
@@ -896,7 +1028,7 @@ async function setBotProfile() {
     { command: 'time', description: 'ضبط وقت الإرسال' },
     { command: 'days', description: 'اختيار أيام الإرسال' },
     { command: 'review', description: 'عدد آيات المراجعة' },
-    { command: 'tafsir', description: 'تشغيل أو إيقاف التفسير' },
+    { command: 'tafsir', description: 'التفسير: تشغيله واختياره وطريقة وصوله' },
     { command: 'reciter', description: 'اختيار القارئ (التلاوة الصوتية)' },
     { command: 'timezone', description: 'ضبط المنطقة الزمنية' },
     { command: 'pause', description: 'أخذ راحة أو العودة منها' },

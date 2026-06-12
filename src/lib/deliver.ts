@@ -1,12 +1,16 @@
-import type { Bot, Context, InlineKeyboard } from 'grammy';
+import { InlineKeyboard } from 'grammy';
+import type { Bot, Context } from 'grammy';
 import {
   ayahAudioUrl,
   dueLocalDate,
   formatDailyMessages,
   formatTafseerMessages,
+  tafseerLink,
+  isTafseerFormat,
   getLocalContext,
   isDayActive,
   toArabicDigits,
+  type TafseerMessage,
 } from '../core';
 import {
   listDeliverableSubscribers,
@@ -25,6 +29,9 @@ import {
   getCachedAyahAudioId,
   cacheAyahAudioId,
   reciterByKey,
+  getTafseerText,
+  tafseerOrDefault,
+  DEFAULT_TAFSEER,
   KIDS_TRACK,
   type DeliverableSubscriber,
   type EntryWithAyah,
@@ -43,19 +50,69 @@ export interface DeliveryStats {
   failed: number;
 }
 
+/** The tafseer settings the message builder reads off a subscriber. */
+export interface TafseerSettings {
+  tafseerEnabled: boolean;
+  /** The chosen edition key (see reference/tafseers.ts). */
+  tafseerEdition: string;
+  /** "text" (inline) or "link". */
+  tafseerFormat: string;
+}
+
 /**
- * The tafseer message(s) to send after today's ayah, or [] when the subscriber
- * turned tafseer off or the ayah has no seeded tafseer. The caller sends these
+ * The tafseer message(s) to send after today's ayah, in the subscriber's chosen
+ * edition and format, or [] when they turned tafseer off (or, in text format,
+ * the chosen edition has no seeded text for this ayah). The caller sends these
  * SILENTLY (disable_notification) so they accompany the ayah without a second
  * notification sound.
+ *
+ * Reads the subscriber's CURRENT settings every time, so a change of edition or
+ * format is honoured on the very next delivery. In "link" format no stored text
+ * is read at all — the message is just the header and the link.
  */
-export function tafseerMessagesFor(entry: EntryWithAyah, enabled: boolean): string[] {
-  if (!enabled || !entry.ayah.tafseer) return [];
+export async function tafseerMessagesFor(
+  entry: EntryWithAyah,
+  sub: TafseerSettings,
+): Promise<TafseerMessage[]> {
+  if (!sub.tafseerEnabled) return [];
+
+  const edition = tafseerOrDefault(sub.tafseerEdition);
+  const format = isTafseerFormat(sub.tafseerFormat) ? sub.tafseerFormat : 'text';
+  const { ayah } = entry;
+  const link = tafseerLink(edition.linkHost, edition.linkRef, ayah.surahNumber, ayah.numberInSurah);
+
+  // Link format needs no committed text: just the header and the pointer.
+  if (format === 'link') {
+    return formatTafseerMessages({
+      numberInSurah: ayah.numberInSurah,
+      editionLabel: edition.nameAr,
+      kind: edition.kind,
+      format,
+      link,
+    });
+  }
+
+  // Text format: read the committed text for the chosen edition (null = not
+  // seeded, which formatTafseerMessages turns into no message).
+  const text = await getTafseerText(edition.key, ayah.surahNumber, ayah.numberInSurah);
   return formatTafseerMessages({
-    surah: { number: entry.ayah.surah.number, nameAr: entry.ayah.surah.nameAr },
-    numberInSurah: entry.ayah.numberInSurah,
-    text: entry.ayah.tafseer,
+    numberInSurah: ayah.numberInSurah,
+    editionLabel: edition.nameAr,
+    kind: edition.kind,
+    format,
+    text,
+    link,
   });
+}
+
+/** The inline keyboard for a tafseer message: a single "read in full" button
+ *  when the message points to the web (link format, or a preview's "read the
+ *  rest"), or undefined for a plain inline-text message. Shared by the
+ *  scheduler and /today so both render the button the same way. */
+export function tafseerReplyMarkup(message: TafseerMessage): InlineKeyboard | undefined {
+  return message.readMoreUrl
+    ? new InlineKeyboard().url(COPY.tafsirReadMoreBtn, message.readMoreUrl)
+    : undefined;
 }
 
 /**
@@ -181,9 +238,10 @@ export async function deliverDueSubscribers(
         // Tafseer (silent). Wrapped so a hiccup never aborts the rest of the
         // batch; the delivery is already committed.
         try {
-          for (const msg of tafseerMessagesFor(entry, sub.tafseerEnabled)) {
-            await bot.api.sendMessage(Number(sub.telegramId), msg, {
+          for (const msg of await tafseerMessagesFor(entry, sub)) {
+            await bot.api.sendMessage(Number(sub.telegramId), msg.text, {
               disable_notification: true,
+              reply_markup: tafseerReplyMarkup(msg),
             });
           }
         } catch (err) {
@@ -234,9 +292,10 @@ export interface TodayView {
    * already-delivered ayah, or a peek on an off day / while paused, sends no
    * tafseer, so the subscriber gets each ayah's tafseer once — with the day it
    * is delivered. Also empty when tafseer is off or the ayah has none. The
-   * caller sends these with disable_notification, only on a 'sent' commit.
+   * caller sends each with disable_notification (and tafseerReplyMarkup for the
+   * "read in full" button), only on a 'sent' commit.
    */
-  tafseer: string[];
+  tafseer: TafseerMessage[];
   /**
    * Set when this view should be COMMITTED as today's delivery (the user pulled
    * their ayah before the scheduled send). The caller records it AFTER the
@@ -265,6 +324,8 @@ export interface TodaySubscriber {
   startedAt: Date | null;
   reviewCount: number;
   tafseerEnabled: boolean;
+  tafseerEdition: string;
+  tafseerFormat: string;
 }
 
 /**
@@ -331,7 +392,7 @@ export async function buildTodayView(
   // Tafseer accompanies a real (claimed) delivery only — not a peek on an off
   // day or while paused — so the subscriber gets each ayah's tafseer once, the
   // day it is actually delivered (here, or at the next scheduled send).
-  const tafseer = claim ? tafseerMessagesFor(entry, sub.tafseerEnabled) : [];
+  const tafseer = claim ? await tafseerMessagesFor(entry, sub) : [];
   return { messages, tafseer, claim, alreadyDelivered: delivered !== null };
 }
 
@@ -342,10 +403,11 @@ export async function buildTodayView(
  *
  * The default order's track (kids-hifz) is used only to resolve the ayah into
  * an entry; the rendered text depends on the ayah and the review count, not on
- * the order, so the choice of track does not affect the output. The ayah's
- * tafseer (if seeded) is appended, so the preview shows the text a subscriber
- * sees. The recitation audio is NOT included (it is a live send, not a text
- * render). Returns an empty array if that ayah is not seeded.
+ * the order, so the choice of track does not affect the output. The default
+ * edition's tafseer (التفسير الميسر, inline) is appended, so the preview shows
+ * the text a subscriber sees. The recitation audio is NOT included (it is a
+ * live send, not a text render). Returns an empty array if that ayah is not
+ * seeded.
  */
 export async function previewAyah(
   surahNumber: number,
@@ -356,7 +418,15 @@ export async function previewAyah(
   const entry = await getEntryForAyah(track.id, surahNumber, numberInSurah);
   if (!entry) return [];
   const content = await buildDailyContent(entry, reviewCount);
-  return [...formatDailyMessages(content), ...tafseerMessagesFor(entry, true)];
+  const tafseer = await tafseerMessagesFor(entry, {
+    tafseerEnabled: true,
+    tafseerEdition: DEFAULT_TAFSEER,
+    tafseerFormat: 'text',
+  });
+  // Admin preview is text-only: fold any read-more URL into the text so the
+  // single ayah render still shows it (the live send uses a button instead).
+  const tafseerText = tafseer.map((m) => (m.readMoreUrl ? `${m.text}\n${m.readMoreUrl}` : m.text));
+  return [...formatDailyMessages(content), ...tafseerText];
 }
 
 /** The surah-completion milestone (text + keyboard) to send after a delivery,

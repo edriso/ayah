@@ -117,6 +117,12 @@ export interface SettingsView {
   activeDays: number;
   reviewCount: number;
   tafseerEnabled: boolean;
+  /** The chosen tafseer edition's Arabic name (e.g. "التفسير الميسر"),
+   *  resolved by the caller. Shown only when tafseer is enabled. */
+  tafseerLabel: string;
+  /** How the tafseer is delivered, as a short Arabic label ("نصًّا" / "رابطًا"),
+   *  resolved by the caller. Shown only when tafseer is enabled. */
+  tafseerModeLabel: string;
   /** The reciter's display label (its Arabic name, or the "no recitation"
    *  label), resolved by the caller. */
   reciterLabel: string;
@@ -151,7 +157,7 @@ export function settingsSummary(s: SettingsView): string {
     `• وقت الإرسال: ${formatTimeAr(s.deliveryHour, s.deliveryMinute)}`,
     `• الأيام: ${daysSummaryAr(s.activeDays)}`,
     `• المراجعة: ${reviewSummaryAr(s.reviewCount)}`,
-    `• التفسير: ${s.tafseerEnabled ? 'مفعّل (التفسير الميسر) 📖' : 'معطّل'}`,
+    `• التفسير: ${s.tafseerEnabled ? `مفعّل (${s.tafseerLabel} · ${s.tafseerModeLabel}) 📖` : 'معطّل'}`,
     `• التلاوة: ${s.reciterLabel}`,
     `• المنطقة الزمنية: ${ltr(s.timezone)}`,
   ];
@@ -214,7 +220,7 @@ export const COPY = {
     `/time: ضبط وقت الإرسال، مثل ${ltr('/time 07:00')}`,
     '/days: اختيار أيام الإرسال',
     `/review: عدد آيات المراجعة من ٠ إلى ٢٠، مثل ${ltr('/review 5')}`,
-    '/tafsir: تشغيل أو إيقاف تفسير الآية (التفسير الميسر) — يصل بصمت بعد الآية',
+    '/tafsir: التفسير — تشغيله أو إيقافه، واختيار التفسير وطريقة وصوله (نصًّا أو رابطًا) — يصل بصمت بعد الآية',
     '/reciter: اختيار القارئ (تلاوة الآية صوتيًا) أو إيقافها — تصل بصمت بعد الآية',
     `/timezone: ضبط المنطقة الزمنية، مثل ${ltr('/timezone Africa/Cairo')}`,
     '/pause: أخذ راحة أو العودة منها (يبقى موضعك محفوظًا)',
@@ -332,23 +338,61 @@ export const COPY = {
       ? 'تم إيقاف المراجعة. ستصلك آية اليوم فقط ✅'
       : `تم ضبط المراجعة على ${reviewSummaryAr(count)} ✅`,
 
-  // Tafseer (التفسير الميسر) toggle. The tafseer arrives as a silent message
-  // right after the daily ayah, so it never adds a second notification sound.
-  tafsirUsage: (enabled: boolean) =>
+  // Tafseer card. The tafseer arrives as a silent message right after the daily
+  // ayah, so it never adds a second notification sound. The subscriber turns it
+  // on/off, picks WHICH tafseer (the edition), and HOW it arrives (the full text
+  // inline, or a link to read it). Shown by /tafsir and the /settings button,
+  // paired with the tafseer keyboard.
+  tafsirCard: (enabled: boolean, editionLabel: string, modeLabel: string) =>
     [
-      `التفسير حاليًا: ${enabled ? 'مفعّل 📖' : 'معطّل'}.`,
-      'يصلك تفسير الآية (التفسير الميسر) بصمت بعد آية اليوم، دون صوت تنبيه.',
-      `للتشغيل اكتب ${ltr('/tafsir on')}، وللإيقاف ${ltr('/tafsir off')}`,
+      'إعدادات التفسير 📖',
+      `• الحالة: ${enabled ? 'مفعّل ✅' : 'معطّل'}`,
+      `• التفسير: ${editionLabel}`,
+      `• طريقة الوصول: ${modeLabel}`,
+      '',
+      'يصلك بصمت بعد آية اليوم (دون صوت تنبيه). اختر من الأزرار بالأسفل.',
     ].join('\n'),
-  tafsirInvalid: `اكتب ${ltr('/tafsir on')} للتشغيل أو ${ltr('/tafsir off')} للإيقاف`,
+  // Short Arabic labels for the delivery format (used in the card and settings).
+  tafsirModeText: 'نصًّا',
+  tafsirModeLink: 'رابطًا',
+  // Quick on/off via the command argument, e.g. "/tafsir on".
+  tafsirInvalid: `اكتب ${ltr('/tafsir on')} للتشغيل، أو ${ltr('/tafsir off')} للإيقاف، أو ${ltr('/tafsir')} لاختيار التفسير وطريقة وصوله`,
   tafsirUpdated: (enabled: boolean) =>
     enabled
-      ? 'تم تفعيل التفسير ✅ سيصلك تفسير الآية (التفسير الميسر) بصمت بعد آية اليوم.'
+      ? 'تم تفعيل التفسير ✅ سيصلك تفسير الآية بصمت بعد آية اليوم.'
       : 'تم إيقاف التفسير ✅ ستصلك آية اليوم فقط.',
-  // Settings keyboard toggle button + its toast.
+  // Tafseer card button labels + the on/off toggle toast.
   tafsirOnBtn: '📖 تشغيل التفسير',
   tafsirOffBtn: '🔇 إيقاف التفسير',
+  tafsirSourceBtn: '📚 اختيار التفسير',
+  // The format toggle button shows the OTHER format (what tapping switches TO).
+  tafsirToLinkBtn: '🔗 التحويل إلى رابط',
+  tafsirToTextBtn: '📄 التحويل إلى نص',
   tafsirToggleAck: (enabled: boolean) => (enabled ? 'تم تفعيل التفسير 📖' : 'تم إيقاف التفسير 🔇'),
+  tafsirFormatAck: (toLink: boolean) =>
+    toLink ? 'سيصلك التفسير كرابط 🔗' : 'سيصلك التفسير نصًّا 📄',
+  // Tafseer edition picker. A long edition (Ibn Kathir) is shown with a hint
+  // that it arrives as an opening + link.
+  // A short "which is which" legend so a reader can choose meaningfully, then
+  // the buttons. Each line names an edition and its character.
+  tafsirSourcePrompt: [
+    'اختر التفسير الذي تريد أن يصلك بعد آية اليوم:',
+    '',
+    '• التفسير الميسر: الأبسط والأشهر',
+    '• المختصر في التفسير: موجز حديث',
+    '• تفسير السعدي: أوسع قليلًا',
+    '• تفسير ابن كثير: مطوّل (تصلك بدايته مع رابط لإكماله)',
+  ].join('\n'),
+  tafsirPreviewNote: 'مطوّل — بداية ورابط',
+  tafsirSourceSet: (nameAr: string) => `تم اختيار ${nameAr} ✅`,
+  // Label for the inline button that opens the full tafseer on the web (used in
+  // link format and for a preview edition's "read the rest").
+  tafsirReadMoreBtn: 'اقرأ على الموقع ↗',
+  // Reminder shown after picking an edition by command while the tafseer is
+  // OFF, so the choice does not silently do nothing.
+  tafsirOffReminder: `ملاحظة: التفسير متوقف حاليًا. لتشغيله اكتب ${ltr('/tafsir on')}`,
+  // Settings keyboard button to open the tafseer card.
+  settingsTafsirBtn: '📖 التفسير (المصدر والطريقة)',
 
   // Reciter (recitation audio) picker. The audio arrives as a silent message
   // right after the ayah, in the chosen reciter's voice, with no notification
@@ -373,7 +417,7 @@ export const COPY = {
     'السلام عليكم ورحمة الله 🌿',
     'بوت "آية" يعينك على حفظ القرآن الكريم بخطوات صغيرة ثابتة:',
     '• تصلك كل يوم آية جديدة للحفظ، ومعها آيات سابقة من نفس السورة للمراجعة.',
-    '• ويمكن أن تصلك تلاوة الآية صوتيًا (تختار القارئ بأمر /reciter) وتفسيرها (التفسير الميسر) بصمت بعدها.',
+    '• ويمكن أن تصلك تلاوة الآية صوتيًا (تختار القارئ بأمر /reciter) وتفسيرها بصمت بعدها (تختار التفسير وطريقة وصوله بأمر /tafsir).',
     '• تختار السورة التي تبدأ بها، والترتيب: من الناس (منهج الحفظ) أو من الفاتحة (ترتيب المصحف).',
     '• تختار وقت الإرسال والأيام التي تناسبك.',
     '• يمكنك أخذ راحة وقتما تشاء، وتعود من حيث توقفت.',

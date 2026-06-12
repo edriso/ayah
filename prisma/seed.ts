@@ -1,13 +1,15 @@
-// Seed the database from the frozen Quran data file.
+// Seed the database from the frozen data files.
 //
 // Order of operations:
-//   1. pnpm data:fetch   -> downloads + verifies + writes the JSON file
-//   2. pnpm db:push      -> creates the tables
-//   3. pnpm db:seed      -> this script: fills Surah, Ayah, Track, TrackEntry
+//   1. pnpm data:fetch          -> downloads + verifies + writes the Quran text
+//   2. pnpm data:fetch:tafseer  -> downloads + verifies the tafseer editions
+//   3. pnpm db:push (or deploy) -> creates the tables
+//   4. pnpm db:seed             -> this script: fills Surah, Ayah, Tafseer,
+//                                  Track, TrackEntry
 //
 // This script re-checks the data (6236 ayat, right count per surah) before
-// writing anything, and is safe to run twice: if the text is already seeded
-// it just stops.
+// writing anything, and is safe to run twice: a fully-seeded table is left
+// untouched.
 
 import { loadEnv } from '../src/core';
 import { readFileSync } from 'node:fs';
@@ -16,6 +18,7 @@ import { fileURLToPath } from 'node:url';
 import { prisma } from '../src/database/client';
 import { SURAHS } from '../src/database/reference/surahs';
 import { AYAH_COUNTS, TOTAL_AYAT } from '../src/database/reference/ayah-counts';
+import { TAFSEERS } from '../src/database/reference/tafseers';
 import {
   KIDS_TRACK,
   MUSHAF_TRACK,
@@ -27,20 +30,25 @@ import {
 loadEnv();
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const DATA_FILE = join(HERE, 'data', 'quran-uthmani.json');
-const TAFSEER_FILE = join(HERE, 'data', 'tafseer-muyassar.json');
+const DATA_DIR = join(HERE, 'data');
+const DATA_FILE = join(DATA_DIR, 'quran-uthmani.json');
 
 interface QuranData {
   meta: { source: string; sourceUrl: string; totalAyat: number; sha256: string };
   surahs: { number: number; ayat: string[] }[];
 }
 
-// The frozen tafseer (التفسير الميسر), aligned with the text by (surah, ayah):
-// surahs[surah-1].ayat[ayah-1] is the tafseer for that ayah. Produced by
-// "pnpm data:fetch:tafseer".
+// One frozen tafseer edition, aligned with the text by (surah, ayah):
+// surahs[surah-1].ayat[ayah-1] is the tafseer for that ayah. One file per
+// edition (tafseer-<key>.json), produced by "pnpm data:fetch:tafseer".
 interface TafseerData {
-  meta: { source: string; edition: string; sourceUrl: string; totalAyat: number; sha256: string };
   surahs: { number: number; ayat: string[] }[];
+}
+
+/** A loaded tafseer edition: its registry key plus the file's data. */
+interface LoadedTafseer {
+  key: string;
+  data: TafseerData;
 }
 
 // The tracks to seed, each with the function that builds its ayah order.
@@ -54,11 +62,12 @@ async function main() {
   const data = loadData();
   verify(data);
 
-  // The tafseer is optional: if its data file is missing the bot still works
-  // (the daily send just omits the tafseer message). If it IS present we verify
-  // it against the same oracle so a corrupt/wrong-edition file fails loudly.
-  const tafseer = loadTafseer();
-  if (tafseer) verifyTafseer(tafseer);
+  // The tafseer is optional: an edition whose data file is missing is simply
+  // skipped (a subscriber on it gets the ayah with no tafseer message). Each
+  // file present is verified against the same oracle so a corrupt/wrong-edition
+  // file fails loudly before any user sees it.
+  const editions = loadTafseerEditions();
+  for (const e of editions) verifyTafseerFile(e.key, e.data);
 
   // Step 1: the holy text. Seed it once; skip if it is already fully in
   // place, but DO NOT return early. Tracks are seeded below, and a track may
@@ -73,14 +82,13 @@ async function main() {
         `Run "pnpm db:reset" to wipe and reseed.`,
     );
   } else {
-    await seedText(data, tafseer);
+    await seedText(data);
   }
 
-  // Step 1b: the tafseer. Inserted inline above on a fresh seed; here we
-  // backfill any ayat still missing it (an existing deployment seeded before
-  // tafseer shipped, or a freshly fetched tafseer file). Idempotent and a
-  // no-op once every ayah has its tafseer.
-  if (tafseer) await ensureTafseer(tafseer);
+  // Step 1b: the tafseer table, one edition at a time. Per-edition idempotent:
+  // a fully-seeded edition is skipped, so this is safe to re-run and adds a
+  // newly fetched edition to an already-seeded database.
+  for (const e of editions) await seedTafseerEdition(e.key, e.data);
 
   // Step 2: the ayah lookup, used to turn each (surah, ayah) step into an id.
   console.log('Building the ayah lookup...');
@@ -101,9 +109,8 @@ async function main() {
   console.log('\nDone. All tracks seeded.');
 }
 
-/** Insert the 114 surah rows and all 6236 ayah rows from the verified data.
- *  When the tafseer data is available it is inserted alongside each ayah. */
-async function seedText(data: QuranData, tafseer: TafseerData | null): Promise<void> {
+/** Insert the 114 surah rows and all 6236 ayah rows from the verified data. */
+async function seedText(data: QuranData): Promise<void> {
   console.log('Seeding surahs...');
   for (const meta of SURAHS) {
     const ayahCount = data.surahs[meta.number - 1].ayat.length;
@@ -118,49 +125,39 @@ async function seedText(data: QuranData, tafseer: TafseerData | null): Promise<v
     });
   }
 
-  console.log(tafseer ? 'Seeding ayat (with tafseer)...' : 'Seeding ayat...');
+  console.log('Seeding ayat...');
   const ayahRows = data.surahs.flatMap((s) =>
-    s.ayat.map((text, i) => ({
-      surahNumber: s.number,
-      numberInSurah: i + 1,
-      text,
-      // Aligned by index: ayat[i] is ayah i+1 in both files (verified above).
-      tafseer: tafseer?.surahs[s.number - 1]?.ayat[i] ?? null,
-    })),
+    s.ayat.map((text, i) => ({ surahNumber: s.number, numberInSurah: i + 1, text })),
   );
   await createManyChunked('ayat', ayahRows, (chunk) => prisma.ayah.createMany({ data: chunk }));
 }
 
 /**
- * Fill in the tafseer for any ayah still missing it. Runs after the text step
- * so it covers both a database seeded before tafseer shipped and a re-run with
- * a freshly fetched tafseer file. A no-op (and cheap single COUNT) once every
- * ayah already has its tafseer.
+ * Seed the Tafseer table for one edition from its verified file. Per-edition
+ * idempotent: a fully-seeded edition (6236 rows) is skipped, an empty one is
+ * inserted, a half-seeded one is a hard error (clear it and reseed). The file
+ * is aligned by index — surahs[surah-1].ayat[ayah-1] is the (edition, surah,
+ * ayah) text — so no ayah-id lookup is needed.
  */
-async function ensureTafseer(tafseer: TafseerData): Promise<void> {
-  const missing = await prisma.ayah.count({ where: { tafseer: null } });
-  if (missing === 0) {
-    console.log('Tafseer already in place for all ayat. Skipping.');
+async function seedTafseerEdition(edition: string, tafseer: TafseerData): Promise<void> {
+  const have = await prisma.tafseer.count({ where: { edition } });
+  if (have === TOTAL_AYAT) {
+    console.log(`Tafseer "${edition}" already seeded (${TOTAL_AYAT} rows). Skipping.`);
     return;
   }
-  console.log(`Backfilling tafseer for ${missing} ayat...`);
-  const rows = await prisma.ayah.findMany({
-    where: { tafseer: null },
-    select: { id: true, surahNumber: true, numberInSurah: true },
-  });
-  let done = 0;
-  for (let i = 0; i < rows.length; i += 200) {
-    const chunk = rows.slice(i, i + 200);
-    await prisma.$transaction(
-      chunk.map((a) => {
-        const text = tafseer.surahs[a.surahNumber - 1]?.ayat[a.numberInSurah - 1];
-        if (!text) throw new Error(`No tafseer for ${a.surahNumber}:${a.numberInSurah}`);
-        return prisma.ayah.update({ where: { id: a.id }, data: { tafseer: text } });
-      }),
+  if (have > 0) {
+    throw new Error(
+      `Tafseer "${edition}" has ${have} rows (expected 0 or ${TOTAL_AYAT}). It is half-seeded; ` +
+        `clear it (DELETE FROM tafseer WHERE edition='${edition}') and reseed.`,
     );
-    done += chunk.length;
-    console.log(`  tafseer: ${done}/${rows.length}`);
   }
+  console.log(`Seeding tafseer "${edition}"...`);
+  const rows = tafseer.surahs.flatMap((s) =>
+    s.ayat.map((text, i) => ({ edition, surahNumber: s.number, numberInSurah: i + 1, text })),
+  );
+  await createManyChunked(`tafseer ${edition}`, rows, (chunk) =>
+    prisma.tafseer.createMany({ data: chunk }),
+  );
 }
 
 /**
@@ -212,26 +209,32 @@ function loadData(): QuranData {
   }
 }
 
-/** Read the frozen tafseer file, or null if it has not been fetched yet. */
-function loadTafseer(): TafseerData | null {
-  try {
-    return JSON.parse(readFileSync(TAFSEER_FILE, 'utf8')) as TafseerData;
-  } catch {
-    console.warn(
-      `No tafseer data file at ${TAFSEER_FILE}. Seeding without tafseer ` +
-        `(the bot will simply omit the tafseer message). Run "pnpm data:fetch:tafseer" to add it.`,
-    );
-    return null;
+/** Read every tafseer edition whose data file has been fetched. A missing file
+ *  is fine (that edition is just skipped); the bot omits the tafseer for a
+ *  subscriber on an unseeded edition. */
+function loadTafseerEditions(): LoadedTafseer[] {
+  const loaded: LoadedTafseer[] = [];
+  for (const t of TAFSEERS) {
+    const file = join(DATA_DIR, `tafseer-${t.key}.json`);
+    try {
+      loaded.push({ key: t.key, data: JSON.parse(readFileSync(file, 'utf8')) as TafseerData });
+    } catch {
+      console.warn(
+        `No tafseer data file for "${t.key}" at ${file}. Skipping it ` +
+          `(run "pnpm data:fetch:tafseer ${t.key}" to add it).`,
+      );
+    }
   }
+  return loaded;
 }
 
-/** Re-check the tafseer file against the same oracle as the text: 114 surahs,
+/** Re-check one tafseer file against the same oracle as the text: 114 surahs,
  *  the right count per surah, every entry non-empty, so it lines up one-to-one
  *  with the ayat by (surah, ayah). */
-function verifyTafseer(tafseer: TafseerData): void {
-  if (tafseer.surahs.length !== 114) {
+function verifyTafseerFile(edition: string, tafseer: TafseerData): void {
+  if (tafseer.surahs?.length !== 114) {
     throw new Error(
-      `Tafseer file has ${tafseer.surahs.length} surahs, expected 114. Re-run data:fetch:tafseer.`,
+      `Tafseer "${edition}" has ${tafseer.surahs?.length} surahs, expected 114. Re-run data:fetch:tafseer ${edition}.`,
     );
   }
   let total = 0;
@@ -240,19 +243,19 @@ function verifyTafseer(tafseer: TafseerData): void {
     const got = ayat?.length ?? -1;
     if (got !== AYAH_COUNTS[surah]) {
       throw new Error(
-        `Tafseer file: surah ${surah} has ${got} entries, expected ${AYAH_COUNTS[surah]}. Re-run data:fetch:tafseer.`,
+        `Tafseer "${edition}": surah ${surah} has ${got} entries, expected ${AYAH_COUNTS[surah]}. Re-run data:fetch:tafseer ${edition}.`,
       );
     }
     if (ayat!.some((t) => !t || t.trim() === '')) {
       throw new Error(
-        `Tafseer file: surah ${surah} has an empty entry. Re-run data:fetch:tafseer.`,
+        `Tafseer "${edition}": surah ${surah} has an empty entry. Re-run data:fetch:tafseer ${edition}.`,
       );
     }
     total += got;
   }
   if (total !== TOTAL_AYAT) {
     throw new Error(
-      `Tafseer file totals ${total} entries, expected ${TOTAL_AYAT}. Re-run data:fetch:tafseer.`,
+      `Tafseer "${edition}" totals ${total} entries, expected ${TOTAL_AYAT}. Re-run data:fetch:tafseer ${edition}.`,
     );
   }
 }

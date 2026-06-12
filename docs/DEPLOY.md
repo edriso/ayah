@@ -121,9 +121,16 @@ idempotent, so running it when nothing is new is a harmless no-op. The release
 that added the Mushaf (forward) order needs one `pnpm db:seed`.
 
 The release that added the **tafseer** needs `pnpm db:deploy` (the migration
-adds the `ayat.tafseer` and `subscribers.tafseer_enabled` columns) and one
-`pnpm db:seed` (it backfills the tafseer for the already-seeded ayat from the
-committed `tafseer-muyassar.json`). Both are idempotent.
+adds the `subscribers.tafseer_enabled` column) and one `pnpm db:seed`. Both are
+idempotent.
+
+The release that added **multiple tafseer editions** needs `pnpm db:deploy` (the
+migration drops the old `ayat.tafseer` column, adds `subscribers.tafseer_edition`
++ `tafseer_format`, and creates the `tafseer` table) and one `pnpm db:seed` (it
+fills the `tafseer` table from the committed per-edition files, one edition at a
+time; already-seeded editions are skipped). The editions ship committed, so no
+fetch is needed; `pnpm verify:tafseer` optionally checks each edition's "read in
+full" link still resolves.
 
 The release that added the **recitation audio** needs only `pnpm db:deploy` (the
 migration adds the `subscribers.reciter` column and the `ayah_audio` file_id

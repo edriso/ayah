@@ -8,10 +8,12 @@ purpose. The aim is that a junior developer can read this and be productive.
 Ayah is a Telegram bot that sends one Quran ayah a day to each subscriber,
 with the previous ayat of the same surah for review (a per-user count, 0-20,
 default 10). Right after the ayah it can also send that ayah's
-recitation audio (in a chosen reciter's voice) and its tafseer
-(التفسير الميسر), both as SILENT messages (no notification sound). The tafseer
-is on by default (`/tafsir`); the audio defaults to الحصري المعلِّم and the
-subscriber picks the reciter — or none — with `/reciter`. Each subscriber also
+recitation audio (in a chosen reciter's voice) and its tafseer, both as SILENT
+messages (no notification sound). The tafseer is on by default (`/tafsir`); the
+subscriber picks WHICH tafseer (التفسير الميسر — the default, المختصر, السعدي,
+or ابن كثير) and HOW it arrives (the text inline, or a link) with `/tafsir`. The
+audio defaults to الحصري المعلِّم and the subscriber picks the reciter — or none
+— with `/reciter`. Each subscriber also
 chooses where to begin (surah + ayah) and in which order to memorize: the
 reverse hifz order (from An-Nas, the default) or the forward Mushaf order (from
 Al-Fatihah). It is one small TypeScript project, with everything under `src/`:
@@ -38,8 +40,9 @@ Read `docs/ERD.md` and `docs/DATABASE.md` before changing data or the schema.
 
 1. Never type Quran text OR tafseer by hand. The text only comes from
    `pnpm data:fetch` (verified Tanzil Uthmani); the tafseer only from
-   `pnpm data:fetch:tafseer` (verified Al-Muyassar, King Fahd Complex). Surah
-   and Ayah tables (including `Ayah.tafseer`) are read-only after seeding.
+   `pnpm data:fetch:tafseer` (each edition verified against the same oracle,
+   from an authoritative source — see `src/database/reference/tafseers.ts`).
+   The Surah, Ayah, and Tafseer tables are read-only after seeding.
 2. Keep `core` pure. No database or network imports there. That is what
    keeps it easy to test.
 3. The bot sends plain text, never Markdown or HTML parse_mode. Quran text
@@ -74,8 +77,22 @@ One subscriber failing is caught and never stops the rest of the batch.
 Right after an ayah is delivered, the bot follows it with that ayah's tafseer as
 one or more SILENT messages (`disable_notification`, so no second notification
 sound), when the subscriber has tafseer on (`Subscriber.tafseerEnabled`, default
-true) and the ayah has a seeded tafseer. The tafseer is for TODAY's ayah only,
-never the review block.
+true). The tafseer is for TODAY's ayah only, never the review block.
+
+WHICH tafseer and HOW are per-subscriber. `Subscriber.tafseerEdition` (default
+`muyassar`) picks the edition from the `Tafseer` table; `Subscriber.tafseerFormat`
+(`text` / `link`, default `text`) picks delivery. In `text` format the committed
+text is sent inline (split across messages only if a long edition needs it; the
+ayah is omitted if that edition has no seeded text). In `link` format no stored
+text is read — just a header and a "read on the web" button. The one long
+edition, Ibn Kathir (`kind: 'preview'` in the registry), is the exception: its
+full text is too big to commit (like the audio), so only a one-message opening
+is stored and `text` mode sends that opening plus a button to the rest. The
+editions are reference data (`src/database/reference/tafseers.ts`); the link is
+built by `tafseerLink` and surfaced as a tappable button (`tafseerReplyMarkup`
+in deliver.ts, never a bare URL in the text); `pnpm verify:tafseer` checks every
+edition's link still resolves (the tafseer's "trusted resource" check for the
+link half).
 
 Just before the tafseer (reading order: read → hear → understand), the bot also
 sends the ayah's RECITATION AUDIO in the subscriber's chosen reciter's voice
@@ -113,9 +130,11 @@ setting change is honoured on the very next delivery with no extra wiring:
   `(surah, ayah, reciter)`, so a changed voice is a cache MISS and fetches the
   new reciter — it never serves the old voice's cached clip. "none" sends no
   audio at all.
-- Turn the tafseer on/off with `/tafsir`: the next delivered ayah includes (or
-  omits) its tafseer accordingly. It is for TODAY's ayah only, never the review
-  block.
+- Manage the tafseer with `/tafsir` (the tafseer card, also reached from
+  `/settings`): turn it on/off, pick the edition, or switch text/link. The next
+  delivered ayah honours the new choice — a changed edition reads from that
+  edition's `Tafseer` rows, and `link` mode skips the stored text entirely. The
+  tafseer is for TODAY's ayah only, never the review block.
 - Jump with `/surah` (or a surah / onboarding button): the audio and tafseer are
   for the NEW ayah, because the reposition delivers from the new position; they
   arrive the first time that ayah is actually delivered (now if it claims a free
@@ -160,10 +179,12 @@ boundaries when it exceeds Telegram's limit; the longest single ayah
 ```bash
 pnpm install
 pnpm data:fetch         # download + verify the Quran text (once; also committed)
-pnpm data:fetch:tafseer # download + verify the tafseer (Al-Muyassar; also committed)
+pnpm data:fetch:tafseer # download + verify the tafseer editions (committed; pass keys for a subset)
 pnpm verify:audio       # check the recitation-audio CDN serves every reciter
+pnpm verify:tafseer     # check every tafseer edition's "read in full" link resolves
+pnpm tafseer:demo       # send every edition/format for one ayah to the admin (test/compare)
 pnpm db:deploy          # apply migrations (create tables)
-pnpm db:seed            # fill Quran tables (text + tafseer) and the tracks
+pnpm db:seed            # fill Quran tables, the tafseer editions, and the tracks
 pnpm dev            # run the bot with reload
 pnpm test           # all tests
 pnpm check          # typecheck + lint + test (run before pushing)
@@ -210,9 +231,21 @@ real changes go through a migration so production stays in step.
 - Shared kernel (schedule, days, arabic, env, logger, send): the
   `telegram-bot-kit` package; the matching `src/core/*` and `src/lib/{send,logger}.ts`
   files are re-export shims.
-- Tafseer text + fetch: `prisma/data/tafseer-muyassar.json` (committed),
-  fetched/verified by `scripts/fetch-tafseer.ts`; seeded into `Ayah.tafseer`.
-- Tafseer message rendering: `src/core/tafseer.ts` (`formatTafseerMessages`).
+- Tafseer editions: `src/database/reference/tafseers.ts` (registry — key,
+  nameAr, kind, source, link), `prisma/data/tafseer-<key>.json` (committed,
+  one per edition; Ibn Kathir holds only a one-message opening),
+  fetched/verified by `scripts/fetch-tafseer.ts` (its pure text helpers live in
+  `scripts/lib/tafseer-clean.ts`, unit-tested), link-checked by
+  `scripts/verify-tafseer.ts`; seeded into the `Tafseer` table; read by
+  `getTafseerText` (`src/database/services/tafseer.service.ts`). To eyeball
+  every edition/format for one ayah in Telegram, `pnpm tafseer:demo [surah ayah]`
+  sends them to the admin (`scripts/demo-tafseer.ts`, reads the committed files,
+  no DB needed).
+- Tafseer message rendering + link: `src/core/tafseer.ts` returns
+  `TafseerMessage[]` (`formatTafseerMessages`, `tafseerLink`); the per-subscriber
+  build is `tafseerMessagesFor` in deliver.ts, and the "read on the web" button
+  is `tafseerReplyMarkup` there. The tafseer picker keyboard is
+  `src/lib/tafseer-keyboard.ts`.
 - Reciters (recitation audio): `src/database/reference/reciters.ts` (registry),
   `src/core/audio.ts` (`ayahAudioUrl`), `src/lib/send-audio.ts` (the send
   wrapper), `AyahAudio` (file_id cache) + `src/database/services/audio.service.ts`,
