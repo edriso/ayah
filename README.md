@@ -31,7 +31,9 @@ developer can work on it.
   settings: change the reciter and the next ayah is recited in the new voice;
   switch the tafseer edition and the next one follows; jump to another surah and
   the new ayah's audio and tafseer follow it — each taking effect from the next
-  delivered ayah.
+  delivered ayah. After a change, a "جرّب على آية اليوم" button lets the person
+  preview the new voice or tafseer on today's ayah right away (a silent peek
+  that does not re-deliver or advance anything).
 - The Quran text is verified Tanzil Uthmani text, and every tafseer edition is
   verified against the same count oracle and comes from an authoritative source.
   They live in read-only database tables and are never changed by the bot. The
