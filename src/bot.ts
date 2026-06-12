@@ -199,18 +199,31 @@ function tafseerCardText(sub: Subscriber): string {
   );
 }
 
-/** The tafseer card keyboard: on/off, choose edition, switch text<->link, and
- *  (when the tafseer is on) a "try it on today's ayah" preview button. */
+/** The tafseer card keyboard: on/off, choose edition, switch text<->link. The
+ *  "try it on today's ayah" preview is NOT here; like the reciter's, it appears
+ *  on the edition-chosen confirmation instead (see replyTafseerChosen). */
 function buildTafseerCardKeyboard(sub: Subscriber): InlineKeyboard {
   const toLink = sub.tafseerFormat !== 'link'; // tapping switches to the other format
-  const kb = new InlineKeyboard()
+  return new InlineKeyboard()
     .text(sub.tafseerEnabled ? COPY.tafsirOffBtn : COPY.tafsirOnBtn, TAFSEER_TOGGLE)
     .row()
     .text(COPY.tafsirSourceBtn, TAFSEER_SOURCE_OPEN)
     .row()
     .text(toLink ? COPY.tafsirToLinkBtn : COPY.tafsirToTextBtn, TAFSEER_FORMAT_TOGGLE);
-  if (sub.tafseerEnabled) kb.row().text(COPY.tafsirSampleBtn, TAFSEER_SAMPLE);
-  return kb;
+}
+
+/** Confirm a just-set tafseer edition (shared by /tafsir <edition> and the
+ *  picker). Mirrors the reciter confirmation: a "تم اختيار …" reply that carries
+ *  the "try it on today's ayah" preview button — but only when the tafseer is
+ *  on (a preview makes no sense while it is off; then we nudge to turn it on). */
+async function replyTafseerChosen(ctx: Context, enabled: boolean, choice: string): Promise<void> {
+  if (enabled) {
+    await ctx.reply(COPY.tafsirSourceSet(tafseerLabelFor(choice)), {
+      reply_markup: new InlineKeyboard().text(COPY.tafsirSampleBtn, TAFSEER_SAMPLE),
+    });
+  } else {
+    await ctx.reply(`${COPY.tafsirSourceSet(tafseerLabelFor(choice))}\n${COPY.tafsirOffReminder}`);
+  }
 }
 
 /** The tafseer edition picker for a subscriber, with their current choice
@@ -515,10 +528,7 @@ bot.command('tafsir', async (ctx) => {
   }
   if (isTafseerEdition(arg)) {
     await setTafseerEdition(sub.id, arg);
-    // If the tafseer is off, picking an edition would silently do nothing;
-    // remind them how to turn it on.
-    const note = sub.tafseerEnabled ? '' : `\n${COPY.tafsirOffReminder}`;
-    await ctx.reply(COPY.tafsirSourceSet(tafseerLabelFor(arg)) + note);
+    await replyTafseerChosen(ctx, sub.tafseerEnabled, arg);
     return;
   }
   await ctx.reply(COPY.tafsirInvalid);
@@ -934,7 +944,9 @@ bot.callbackQuery(new RegExp(`^${TAFSEER_PICK_PREFIX}(.+)$`), async (ctx) => {
   }
   await setTafseerEdition(sub.id, choice);
   await rerenderTafseerCard(ctx);
-  await ctx.answerCallbackQuery({ text: COPY.tafsirSourceSet(tafseerLabelFor(choice)) });
+  await ctx.answerCallbackQuery();
+  // Confirm with the "try it on today's ayah" button, like the reciter pick.
+  await replyTafseerChosen(ctx, sub.tafseerEnabled, choice);
 });
 
 // "Try it on today's ayah": send the tafseer for today's (or the current) ayah

@@ -143,11 +143,13 @@ setting change is honoured on the very next delivery with no extra wiring:
   shown with the ayah; the audio and tafseer are always for the single daily
   ayah, so they are unaffected.
 
-To let a subscriber experience a new choice right away, the reciter confirmation
-and the tafseer card carry a "جرّب على آية اليوم" preview button. Tapping it
-sends the new audio / tafseer for today's ayah (today's DELIVERED ayah if there
-is one, else the current ayah) as a SILENT peek — `sampleEntryFor` in deliver.ts
-resolves the ayah, and the handlers reuse `deliverAyahAudio` / `tafseerMessagesFor`.
+To let a subscriber experience a new choice right away, the reciter-pick and
+tafseer-edition-pick confirmations carry a "جرّب على آية اليوم" preview button
+(on the confirmation reply, not as a permanent control — so switching text/link
+or toggling on/off does not show it). Tapping it sends the new audio / tafseer
+for today's ayah (today's DELIVERED ayah if there is one, else the current ayah)
+as a SILENT peek — `sampleEntryFor` in deliver.ts resolves the ayah, and the
+handlers reuse `deliverAyahAudio` / `tafseerMessagesFor`.
 A preview is NOT a delivery: it records nothing in `DeliveryLog`, never advances
 the position, and fires no milestone, so it can be tapped freely and never
 duplicates or collides with the once-a-day send. (Pull, not push, on purpose —
