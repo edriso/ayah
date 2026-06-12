@@ -388,6 +388,17 @@ export const COPY = {
   // Label for the inline button that opens the full tafseer on the web (used in
   // link format and for a preview edition's "read the rest").
   tafsirReadMoreBtn: 'اقرأ على الموقع ↗',
+
+  // "Try it on today's ayah" preview buttons (on the reciter confirmation and
+  // the tafseer card) + the toasts when tapped. The preview is a silent peek:
+  // it sends the new audio / tafseer for today's ayah without re-delivering it.
+  tafsirSampleBtn: '📖 جرّب على آية اليوم',
+  reciterSampleBtn: '🎧 جرّب على آية اليوم',
+  sampleSentAck: 'أرسلنا عينة على آية اليوم 🌿',
+  sampleNoAyah: 'ابدأ أولًا بـ /today لتجربة اختيارك 🌿',
+  sampleReciterOff: 'التلاوة متوقفة حاليًا',
+  sampleTafsirOff: 'التفسير متوقف حاليًا',
+  sampleNoTafsir: 'لا يوجد تفسير متاح لهذه الآية الآن',
   // Reminder shown after picking an edition by command while the tafseer is
   // OFF, so the choice does not silently do nothing.
   tafsirOffReminder: `ملاحظة: التفسير متوقف حاليًا. لتشغيله اكتب ${ltr('/tafsir on')}`,

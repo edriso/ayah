@@ -77,7 +77,12 @@ vi.mock('./logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-import { buildTodayView, buildCompletionMessage, deliverDueSubscribers } from './deliver';
+import {
+  buildTodayView,
+  buildCompletionMessage,
+  deliverDueSubscribers,
+  sampleEntryFor,
+} from './deliver';
 
 // 2026-06-01 (UTC) is a Monday, ISO weekday 1.
 const NOW = new Date('2026-06-01T12:00:00Z');
@@ -415,6 +420,37 @@ describe('deliverDueSubscribers (scheduler sends audio + tafseer silently)', () 
     // tafseer, so this run must not send a second copy of either.
     expect(h.sendAudio).not.toHaveBeenCalled();
     expect(api.sendMessage).not.toHaveBeenCalled();
+  });
+});
+
+describe('sampleEntryFor (the "try it on today\'s ayah" preview)', () => {
+  it("uses today's DELIVERED ayah when there is one (not the advanced pointer)", async () => {
+    h.getDeliveryFor.mockResolvedValue({ trackEntryId: 7 });
+    const entry = await sampleEntryFor(todaySub(), NOW);
+    expect(entry).toBe(ENTRY);
+    expect(h.getEntryById).toHaveBeenCalledWith(7);
+    expect(h.resolveTargetEntry).not.toHaveBeenCalled(); // delivered wins
+  });
+
+  it('falls back to the current ayah when today is not delivered', async () => {
+    h.getDeliveryFor.mockResolvedValue(null);
+    const entry = await sampleEntryFor(todaySub(), NOW);
+    expect(entry).toBe(ENTRY);
+    expect(h.resolveTargetEntry).toHaveBeenCalled();
+  });
+
+  it('falls back to the current ayah when the delivered entry is missing', async () => {
+    h.getDeliveryFor.mockResolvedValue({ trackEntryId: 99 });
+    h.getEntryById.mockResolvedValue(null);
+    const entry = await sampleEntryFor(todaySub(), NOW);
+    expect(entry).toBe(ENTRY); // from resolveTargetEntry
+    expect(h.resolveTargetEntry).toHaveBeenCalled();
+  });
+
+  it('returns null when the subscriber has not started', async () => {
+    h.getDeliveryFor.mockResolvedValue(null);
+    h.resolveTargetEntry.mockResolvedValue(null);
+    expect(await sampleEntryFor(todaySub(), NOW)).toBeNull();
   });
 });
 

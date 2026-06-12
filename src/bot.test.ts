@@ -52,6 +52,8 @@ vi.mock('./lib/deliver', () => ({
   buildCompletionMessage: h.buildCompletionMessage,
   deliverAyahAudio: h.deliverAyahAudio,
   previewAyah: vi.fn(),
+  tafseerMessagesFor: vi.fn(),
+  sampleEntryFor: vi.fn(),
   // No read-more button for a plain inline-text tafseer message.
   tafseerReplyMarkup: () => undefined,
 }));

@@ -429,6 +429,37 @@ export async function previewAyah(
   return [...formatDailyMessages(content), ...tafseerText];
 }
 
+/** Fields sampleEntryFor needs off a subscriber row. */
+export interface SampleSubscriber {
+  id: number;
+  timezone: string;
+  trackId: number;
+  currentEntryId: number | null;
+  startedAt: Date | null;
+}
+
+/**
+ * The ayah a "try it on today's ayah" preview should use: today's DELIVERED
+ * ayah when there is one (so the sample matches what they last received), else
+ * the ayah they are currently on, or null if they have not started. A pure read
+ * — it never records a delivery, advances the position, or fires a milestone,
+ * so a subscriber can tap "try it" as often as they like. The caller renders
+ * the sample (audio via deliverAyahAudio, tafseer via tafseerMessagesFor) and
+ * sends it silently.
+ */
+export async function sampleEntryFor(
+  sub: SampleSubscriber,
+  now: Date = new Date(),
+): Promise<EntryWithAyah | null> {
+  const local = getLocalContext(sub.timezone, now);
+  const delivered = await getDeliveryFor(sub.id, local.date);
+  if (delivered) {
+    const entry = await getEntryById(delivered.trackEntryId);
+    if (entry) return entry;
+  }
+  return resolveTargetEntry(sub);
+}
+
 /** The surah-completion milestone (text + keyboard) to send after a delivery,
  *  or null when the delivered ayah did not finish a surah. */
 export interface CompletionMessage {

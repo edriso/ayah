@@ -43,7 +43,9 @@ import {
   buildCompletionMessage,
   deliverAyahAudio,
   previewAyah,
+  tafseerMessagesFor,
   tafseerReplyMarkup,
+  sampleEntryFor,
   type TodayView,
 } from './lib/deliver';
 import {
@@ -81,9 +83,12 @@ const TAFSEER_OPEN = 'ayah:taf:card'; // open the tafseer card from /settings
 const TAFSEER_TOGGLE = 'ayah:taf:onoff'; // turn the tafseer on/off
 const TAFSEER_FORMAT_TOGGLE = 'ayah:taf:fmt'; // switch text <-> link
 const TAFSEER_SOURCE_OPEN = 'ayah:taf:srcopen'; // open the edition picker
-// Opens the reciter picker from the /settings keyboard. A distinct prefix (no
-// "ayah:reciter:" segment) so it never matches the reciter-pick handler.
+const TAFSEER_SAMPLE = 'ayah:taf:sample'; // "try it on today's ayah" (tafseer)
+// Opens the reciter picker from the /settings keyboard, and the reciter sample
+// button. Distinct strings (no "ayah:reciter:" prefix) so they never match the
+// reciter-pick handler's `^ayah:reciter:(.+)$`.
 const RECITER_OPEN = 'ayah:reciter-open';
+const RECITER_SAMPLE = 'ayah:reciter-sample'; // "try it on today's ayah" (audio)
 
 // Default review window for /admin_preview when the admin does not give one.
 // Small on purpose: enough to show the review block renders, without a wall
@@ -150,11 +155,19 @@ function tafseerModeLabelFor(format: string): string {
 }
 
 /** Set a subscriber's reciter (already validated by the caller) and reply with
- *  the matching confirmation. Shared by /reciter and the picker buttons. */
+ *  the matching confirmation. A real reciter's confirmation carries a "try it on
+ *  today's ayah" button (a silent audio preview); "none" gets a plain reply.
+ *  Shared by /reciter and the picker buttons. */
 async function applyReciter(ctx: Context, subscriberId: number, choice: string): Promise<void> {
   await setReciter(subscriberId, choice);
   const reciter = reciterByKey(choice);
-  await ctx.reply(reciter ? COPY.reciterSet(reciter.nameAr) : COPY.reciterDisabled);
+  if (!reciter) {
+    await ctx.reply(COPY.reciterDisabled);
+    return;
+  }
+  await ctx.reply(COPY.reciterSet(reciter.nameAr), {
+    reply_markup: new InlineKeyboard().text(COPY.reciterSampleBtn, RECITER_SAMPLE),
+  });
 }
 
 /** The small keyboard under /settings: a pause/resume toggle, a shortcut to the
@@ -186,15 +199,18 @@ function tafseerCardText(sub: Subscriber): string {
   );
 }
 
-/** The tafseer card keyboard: on/off, choose edition, switch text<->link. */
+/** The tafseer card keyboard: on/off, choose edition, switch text<->link, and
+ *  (when the tafseer is on) a "try it on today's ayah" preview button. */
 function buildTafseerCardKeyboard(sub: Subscriber): InlineKeyboard {
   const toLink = sub.tafseerFormat !== 'link'; // tapping switches to the other format
-  return new InlineKeyboard()
+  const kb = new InlineKeyboard()
     .text(sub.tafseerEnabled ? COPY.tafsirOffBtn : COPY.tafsirOnBtn, TAFSEER_TOGGLE)
     .row()
     .text(COPY.tafsirSourceBtn, TAFSEER_SOURCE_OPEN)
     .row()
     .text(toLink ? COPY.tafsirToLinkBtn : COPY.tafsirToTextBtn, TAFSEER_FORMAT_TOGGLE);
+  if (sub.tafseerEnabled) kb.row().text(COPY.tafsirSampleBtn, TAFSEER_SAMPLE);
+  return kb;
 }
 
 /** The tafseer edition picker for a subscriber, with their current choice
@@ -921,6 +937,35 @@ bot.callbackQuery(new RegExp(`^${TAFSEER_PICK_PREFIX}(.+)$`), async (ctx) => {
   await ctx.answerCallbackQuery({ text: COPY.tafsirSourceSet(tafseerLabelFor(choice)) });
 });
 
+// "Try it on today's ayah": send the tafseer for today's (or the current) ayah
+// in the subscriber's CURRENT settings, as a silent peek. It never records a
+// delivery or advances the position, so it is safe to tap repeatedly.
+bot.callbackQuery(TAFSEER_SAMPLE, async (ctx) => {
+  const sub = await subscriberFor(ctx);
+  if (!sub) {
+    await ctx.answerCallbackQuery();
+    return;
+  }
+  if (!sub.tafseerEnabled) {
+    await ctx.answerCallbackQuery({ text: COPY.sampleTafsirOff });
+    return;
+  }
+  const entry = await sampleEntryFor(sub);
+  if (!entry) {
+    await ctx.answerCallbackQuery({ text: COPY.sampleNoAyah });
+    return;
+  }
+  const messages = await tafseerMessagesFor(entry, sub);
+  if (messages.length === 0) {
+    await ctx.answerCallbackQuery({ text: COPY.sampleNoTafsir });
+    return;
+  }
+  await ctx.answerCallbackQuery({ text: COPY.sampleSentAck });
+  for (const m of messages) {
+    await ctx.reply(m.text, { disable_notification: true, reply_markup: tafseerReplyMarkup(m) });
+  }
+});
+
 // ─── Reciter picker ─────────────────────────────────────────────────
 
 // Open the reciter picker in place from the /settings keyboard.
@@ -951,6 +996,29 @@ bot.callbackQuery(new RegExp(`^${RECITER_PICK_PREFIX}(.+)$`), async (ctx) => {
   await ctx.editMessageReplyMarkup().catch(ignoreNotModified); // remove the keyboard
   await ctx.answerCallbackQuery();
   await applyReciter(ctx, sub.id, choice);
+});
+
+// "Try it on today's ayah": send the recitation audio for today's (or the
+// current) ayah in the subscriber's chosen voice, as a silent peek. Never
+// records a delivery or advances the position, so it is safe to tap repeatedly.
+bot.callbackQuery(RECITER_SAMPLE, async (ctx) => {
+  const sub = await subscriberFor(ctx);
+  if (!sub) {
+    await ctx.answerCallbackQuery();
+    return;
+  }
+  if (!reciterByKey(sub.reciter)) {
+    await ctx.answerCallbackQuery({ text: COPY.sampleReciterOff });
+    return;
+  }
+  const entry = await sampleEntryFor(sub);
+  if (!entry) {
+    await ctx.answerCallbackQuery({ text: COPY.sampleNoAyah });
+    return;
+  }
+  await ctx.answerCallbackQuery({ text: COPY.sampleSentAck });
+  // Best-effort: deliverAyahAudio swallows its own send errors.
+  await deliverAyahAudio(bot, sub.telegramId, entry, sub.reciter);
 });
 
 // ─── Admin commands ─────────────────────────────────────────────────
