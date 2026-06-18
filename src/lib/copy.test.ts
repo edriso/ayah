@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { ALL_DAYS, NO_DAYS, maskFromDays } from '../core';
 import {
+  COPY,
   reviewSummaryAr,
   settingsSummary,
   daysSummaryAr,
@@ -135,6 +136,20 @@ describe('orderSummaryAr / positionSummaryAr', () => {
 
   it('adds the surah total when given ("ayah N of M")', () => {
     expect(positionSummaryAr('الملك', 5, 30)).toBe('سورة الملك، آية ٥ من ٣٠');
+  });
+});
+
+describe('bot profile fits Telegram limits', () => {
+  // Telegram rejects an over-long short description (120) or description (512)
+  // with a 400, and setBotProfile awaits both un-caught at boot — so an
+  // over-long string crash-loops the bot and the live text silently goes stale.
+  // Count Unicode code points, the way Telegram counts characters.
+  it('botAbout is within the 120-character short-description limit', () => {
+    expect([...COPY.botAbout].length).toBeLessThanOrEqual(120);
+  });
+
+  it('botDescription is within the 512-character description limit', () => {
+    expect([...COPY.botDescription].length).toBeLessThanOrEqual(512);
   });
 });
 
