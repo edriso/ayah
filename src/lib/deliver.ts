@@ -233,21 +233,24 @@ export interface RevisionSubscriber {
 /**
  * The distant-review («مراجعة للتثبيت») message(s) for today, plus the cursor
  * to persist. Rotates `oldReviewCount` ayat through the subscriber's confirmed
- * corpus in track order, looping. Empty (cursor unchanged) when the feature is
- * off or nothing has been confirmed yet. The caller sends the messages SILENTLY
- * on a real delivery and passes `nextCursor` into commitDelivery, so the
- * rotation advances exactly once per recorded day.
+ * corpus in track order, looping — EXCLUDING `currentSurahNumber` (the surah of
+ * today's ayah), so it is genuinely OLD material and never duplicates today's
+ * in-surah passage. Empty (cursor unchanged) when the feature is off or nothing
+ * OLD has been confirmed yet (e.g. a reader still in their first surah). The
+ * caller sends the messages SILENTLY on a real delivery and passes `nextCursor`
+ * into commitDelivery, so the rotation advances exactly once per recorded day.
  */
 export async function revisionMessagesFor(
   sub: RevisionSubscriber,
+  currentSurahNumber: number,
 ): Promise<{ messages: string[]; nextCursor: number }> {
   const want = clampOldReviewCount(sub.oldReviewCount);
   if (want === 0) return { messages: [], nextCursor: sub.reviewCursor };
-  const total = await countConfirmedAyat(sub.id);
+  const total = await countConfirmedAyat(sub.id, currentSurahNumber);
   if (total === 0) return { messages: [], nextCursor: sub.reviewCursor };
   const count = Math.min(want, total);
   const offset = ((sub.reviewCursor % total) + total) % total; // safe modulo
-  const ayat = await getRevisionAyat(sub.id, offset, count);
+  const ayat = await getRevisionAyat(sub.id, offset, count, currentSurahNumber);
   return { messages: formatRevisionMessages(ayat), nextCursor: sub.reviewCursor + count };
 }
 
@@ -348,8 +351,8 @@ export async function deliverDueSubscribers(
 
       // Compute the distant review BEFORE the commit (it reads only past
       // confirmations, never today's), so its cursor advances in the same
-      // transaction — exactly once per recorded day.
-      const revision = await revisionMessagesFor(sub);
+      // transaction — exactly once per recorded day. It excludes today's surah.
+      const revision = await revisionMessagesFor(sub, entry.ayah.surahNumber);
 
       // Record the day (no advance — the position moves on a confirmed done).
       const committed = await commitDelivery({

@@ -161,13 +161,14 @@ See `reviewRange` in `src/core/review.ts` and `formatDailyMessages`.
 
 **Distant / consolidation (البعيدة, التثبيت) — `oldReviewCount` + `reviewCursor`.**
 Each real daily delivery also revisits `oldReviewCount` previously-CONFIRMED ayat
-(0 = off), rotating through the whole memorized corpus in track order via
-`reviewCursor`, looping — so old memorization does not slip. The corpus is the
-track entries with a confirmed delivery (`countConfirmedAyat` / `getRevisionAyat`
-in `delivery.service.ts`); it shows only what was truly memorized, never the
-current unconfirmed ayah, and grows with progress. The cursor advances once per
-recorded day, inside the same `commitDelivery` transaction. The labeled
-cross-surah list is rendered by `formatRevisionMessages` and sent silently.
+(0 = off), rotating through the memorized corpus in track order via `reviewCursor`,
+looping — so old memorization does not slip. The corpus is the track entries with
+a confirmed delivery **EXCLUDING the surah the reader is currently in**
+(`countConfirmedAyat` / `getRevisionAyat` take the current surah to exclude), so
+it is genuinely OLD material (the completed surahs) and never duplicates today's
+in-surah passage; a reader still in their first surah sees no block. The cursor
+advances once per recorded day, inside the same `commitDelivery` transaction. The
+labeled cross-surah list is rendered by `formatRevisionMessages` and sent silently.
 
 Each delivery can be more than one message (today's ayah + its passage, then the
 silent tafseer and the silent review). Long passages/lists split at ayah

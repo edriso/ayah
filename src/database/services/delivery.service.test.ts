@@ -198,25 +198,29 @@ describe('distant-review corpus (التثبيت)', () => {
     ayah: { numberInSurah: n, text, surah: { nameAr: surahNameAr } },
   });
 
-  it('countConfirmedAyat counts distinct confirmed entries', async () => {
+  it('countConfirmedAyat counts distinct confirmed entries, excluding the current surah', async () => {
     h.entryCount.mockResolvedValue(12);
-    expect(await countConfirmedAyat(1)).toBe(12);
+    expect(await countConfirmedAyat(1, 2)).toBe(12);
     expect(h.entryCount.mock.calls[0][0]).toMatchObject({
-      where: { deliveries: { some: { subscriberId: 1, confirmedAt: { not: null } } } },
+      where: {
+        deliveries: { some: { subscriberId: 1, confirmedAt: { not: null } } },
+        ayah: { surahNumber: { not: 2 } }, // the surah being memorized now is excluded
+      },
     });
   });
 
-  it('getRevisionAyat reads the window in track order and maps to labeled ayat', async () => {
+  it('getRevisionAyat reads the window in track order (excluding the current surah) and maps it', async () => {
     h.entryFindMany.mockResolvedValueOnce([
       entryRow('الناس', 1, 'قُلْ أَعُوذُ'),
       entryRow('الفلق', 5, 'وَمِن شَرِّ حَاسِدٍ'),
     ]);
-    const out = await getRevisionAyat(1, 4, 2);
+    const out = await getRevisionAyat(1, 4, 2, 112);
     expect(out).toEqual([
       { surahNameAr: 'الناس', numberInSurah: 1, text: 'قُلْ أَعُوذُ' },
       { surahNameAr: 'الفلق', numberInSurah: 5, text: 'وَمِن شَرِّ حَاسِدٍ' },
     ]);
     expect(h.entryFindMany.mock.calls[0][0]).toMatchObject({
+      where: { ayah: { surahNumber: { not: 112 } } },
       orderBy: { position: 'asc' },
       skip: 4,
       take: 2,
@@ -227,14 +231,14 @@ describe('distant-review corpus (التثبيت)', () => {
     h.entryFindMany
       .mockResolvedValueOnce([entryRow('الإخلاص', 4, 'ولم يكن')]) // 1 of 2 (hit the end)
       .mockResolvedValueOnce([entryRow('الفاتحة', 1, 'الحمد لله')]); // wrap: 1 from the start
-    const out = await getRevisionAyat(1, 9, 2);
+    const out = await getRevisionAyat(1, 9, 2, 112);
     expect(out.map((a) => a.surahNameAr)).toEqual(['الإخلاص', 'الفاتحة']);
     expect(h.entryFindMany).toHaveBeenCalledTimes(2);
     expect(h.entryFindMany.mock.calls[1][0]).toMatchObject({ skip: 0, take: 1 });
   });
 
   it('getRevisionAyat returns nothing for a zero count', async () => {
-    expect(await getRevisionAyat(1, 0, 0)).toEqual([]);
+    expect(await getRevisionAyat(1, 0, 0, 112)).toEqual([]);
     expect(h.entryFindMany).not.toHaveBeenCalled();
   });
 });

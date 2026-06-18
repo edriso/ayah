@@ -174,13 +174,26 @@ export async function commitDelivery(params: {
 //
 // "Memorized" = the distinct track entries that have at least one CONFIRMED
 // delivery for this subscriber. The distant review rotates through them in
-// track (mushaf) order.
+// track (mushaf) order — EXCLUDING the surah the reader is currently in, since
+// that surah's recent ayat are already shown with today's ayah (the in-surah
+// passage). So it is genuinely OLD material: the surahs already completed. A
+// reader still in their first surah therefore has an empty corpus.
 
-/** How many distinct ayat the subscriber has confirmed (the review corpus size). */
-export function countConfirmedAyat(subscriberId: number): Promise<number> {
-  return prisma.trackEntry.count({
-    where: { deliveries: { some: { subscriberId, confirmedAt: { not: null } } } },
-  });
+/** Build the confirmed-corpus filter, excluding the reader's current surah. */
+function confirmedCorpusWhere(subscriberId: number, excludeSurahNumber: number) {
+  return {
+    deliveries: { some: { subscriberId, confirmedAt: { not: null } } },
+    ayah: { surahNumber: { not: excludeSurahNumber } },
+  };
+}
+
+/** How many distinct OLD ayat the subscriber has confirmed (the review corpus
+ *  size), excluding the surah they are currently in. */
+export function countConfirmedAyat(
+  subscriberId: number,
+  excludeSurahNumber: number,
+): Promise<number> {
+  return prisma.trackEntry.count({ where: confirmedCorpusWhere(subscriberId, excludeSurahNumber) });
 }
 
 const revisionSelect = {
@@ -191,17 +204,18 @@ const revisionSelect = {
 
 /**
  * `count` confirmed ayat for the distant review, in track order, starting at
- * `offset` and wrapping past the end. The caller MUST pass `count <= total`
- * (the confirmed corpus size) so the wrap never returns a duplicate. Returns
- * each ayah as { surahNameAr, numberInSurah, text } for the formatter.
+ * `offset` and wrapping past the end — EXCLUDING the reader's current surah. The
+ * caller MUST pass `count <= total` (the corpus size) so the wrap never returns
+ * a duplicate. Returns each ayah as { surahNameAr, numberInSurah, text }.
  */
 export async function getRevisionAyat(
   subscriberId: number,
   offset: number,
   count: number,
+  excludeSurahNumber: number,
 ): Promise<{ surahNameAr: string; numberInSurah: number; text: string }[]> {
   if (count <= 0) return [];
-  const where = { deliveries: { some: { subscriberId, confirmedAt: { not: null } } } };
+  const where = confirmedCorpusWhere(subscriberId, excludeSurahNumber);
   const head = await prisma.trackEntry.findMany({
     where,
     orderBy: { position: 'asc' },

@@ -369,7 +369,9 @@ describe('deliverDueSubscribers (read-gated scheduler)', () => {
       { surahNameAr: 'الإخلاص', numberInSurah: 1, text: 'قُلْ هُوَ ٱللَّهُ أَحَدٌ' },
     ]);
     await deliverDueSubscribers(bot, NOW);
-    expect(h.getRevisionAyat).toHaveBeenCalledWith(1, 0, 3);
+    // Excludes the current surah (ENTRY is surah 112).
+    expect(h.getRevisionAyat).toHaveBeenCalledWith(1, 0, 3, 112);
+    expect(h.countConfirmedAyat).toHaveBeenCalledWith(1, 112);
     expect(h.commitDelivery.mock.calls[0][0]).toMatchObject({ nextReviewCursor: 3 });
     const reviewCall = api.sendMessage.mock.calls.find((c) =>
       String(c[1]).includes('مراجعة للتثبيت'),
@@ -452,25 +454,26 @@ describe('revisionMessagesFor (distant review window + cursor)', () => {
   });
 
   it('is empty (cursor unchanged) when oldReviewCount is 0', async () => {
-    const out = await revisionMessagesFor(sub({ oldReviewCount: 0, reviewCursor: 4 }));
+    const out = await revisionMessagesFor(sub({ oldReviewCount: 0, reviewCursor: 4 }), 112);
     expect(out).toEqual({ messages: [], nextCursor: 4 });
     expect(h.countConfirmedAyat).not.toHaveBeenCalled();
   });
 
-  it('is empty when nothing has been confirmed yet', async () => {
+  it('is empty when nothing OLD has been confirmed yet (e.g. still in the first surah)', async () => {
     h.countConfirmedAyat.mockResolvedValue(0);
-    const out = await revisionMessagesFor(sub({ reviewCursor: 9 }));
+    const out = await revisionMessagesFor(sub({ reviewCursor: 9 }), 112);
     expect(out).toEqual({ messages: [], nextCursor: 9 });
+    expect(h.countConfirmedAyat).toHaveBeenCalledWith(1, 112); // excludes the current surah
     expect(h.getRevisionAyat).not.toHaveBeenCalled();
   });
 
-  it('reads the window at cursor%total and advances the cursor by the count', async () => {
+  it('reads the window at cursor%total (excluding the current surah) and advances by the count', async () => {
     h.countConfirmedAyat.mockResolvedValue(10);
     h.getRevisionAyat.mockResolvedValue([
       { surahNameAr: 'الفلق', numberInSurah: 1, text: 'قُلْ أَعُوذُ بِرَبِّ الْفَلَقِ' },
     ]);
-    const out = await revisionMessagesFor(sub({ oldReviewCount: 3, reviewCursor: 12 }));
-    expect(h.getRevisionAyat).toHaveBeenCalledWith(1, 2, 3); // 12 % 10 = 2, want 3
+    const out = await revisionMessagesFor(sub({ oldReviewCount: 3, reviewCursor: 12 }), 112);
+    expect(h.getRevisionAyat).toHaveBeenCalledWith(1, 2, 3, 112); // 12 % 10 = 2, want 3
     expect(out.nextCursor).toBe(15); // 12 + 3
     expect(out.messages[0]).toContain('مراجعة للتثبيت');
   });
@@ -481,8 +484,8 @@ describe('revisionMessagesFor (distant review window + cursor)', () => {
       { surahNameAr: 'الناس', numberInSurah: 1, text: 'a' },
       { surahNameAr: 'الفلق', numberInSurah: 1, text: 'b' },
     ]);
-    const out = await revisionMessagesFor(sub({ oldReviewCount: 5, reviewCursor: 0 }));
-    expect(h.getRevisionAyat).toHaveBeenCalledWith(1, 0, 2); // min(5, total=2)
+    const out = await revisionMessagesFor(sub({ oldReviewCount: 5, reviewCursor: 0 }), 112);
+    expect(h.getRevisionAyat).toHaveBeenCalledWith(1, 0, 2, 112); // min(5, total=2)
     expect(out.nextCursor).toBe(2);
   });
 });

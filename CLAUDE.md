@@ -208,10 +208,12 @@ hifz is keeping the old, so each real daily delivery also sends a SILENT
 from the subscriber's CONFIRMED corpus and rotated through it in track order by
 a per-subscriber `reviewCursor`, looping — the classic المراجعة البعيدة. The
 read-gated `confirmedAt` is the source of truth: the corpus is the track entries
-with a confirmed delivery (`countConfirmedAyat` / `getRevisionAyat` in
-delivery.service), so it shows only what was truly memorized, never the current
-(unconfirmed) ayah, and grows with progress — a brand-new reader sees no review
-block. `revisionMessagesFor` (deliver.ts) builds it and returns the
+with a confirmed delivery, **excluding the surah the reader is currently in**
+(`countConfirmedAyat` / `getRevisionAyat` in delivery.service both take the
+current surah to exclude). So it is genuinely OLD material — the surahs already
+completed — and never duplicates today's in-surah passage; it shows only what
+was truly memorized, never the current ayah, and grows with progress. A reader
+still in their first surah therefore sees no review block (nothing old yet). `revisionMessagesFor` (deliver.ts) builds it and returns the
 `nextReviewCursor`; the cursor advances once per recorded day, inside the same
 `commitDelivery` transaction (a daily drip, like the lesson index used to be) —
 so it is gated on a real 'sent' delivery, never a re-show, an off/paused peek, or

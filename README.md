@@ -27,10 +27,12 @@ developer can work on it.
   Telegram's size limit.
 - **Consolidation review (التثبيت).** Memorizing is half the work; keeping it is
   the other half. So each day, alongside the new ayah, the bot also revisits a
-  few **previously-memorized** ayat — silently — rotating through everything the
-  person has confirmed so the old never slips (the classic المراجعة البعيدة).
-  It only ever shows what they've actually completed, grows with their progress,
-  and the daily count (default 3, 0 to turn off) is set with `/review`.
+  few **previously-memorized** ayat — silently — rotating through the surahs the
+  person has **completed** (everything they've confirmed, *except* the surah
+  they're currently on, so it never repeats today's passage) so the old never
+  slips (the classic المراجعة البعيدة). It grows with their progress — a reader
+  still in their first surah sees none yet — and the daily count (default 3, 0
+  to turn off) is set with `/review`.
 - Right after the ayah, the bot can send that ayah's **recitation audio** (in a
   reciter the person chooses, or none) and its **tafseer** — both as **silent**
   messages, no second notification sound. The tafseer is on by default; with

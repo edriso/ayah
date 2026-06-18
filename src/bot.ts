@@ -335,7 +335,9 @@ export async function sendTodayView(
 
   // The distant review is computed BEFORE the commit (reads only past
   // confirmations) so its cursor advances in the same transaction, once per day.
-  const revision = view.record ? await revisionMessagesFor(sub) : { messages: [], nextCursor: 0 };
+  const revision = view.record
+    ? await revisionMessagesFor(sub, view.record.entry.ayah.surahNumber)
+    : { messages: [], nextCursor: 0 };
 
   // Record today's delivery (no advance — the position moves on a confirmed
   // done). Only on a free day (view.record). 'duplicate' = the scheduler beat
