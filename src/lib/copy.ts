@@ -269,8 +269,7 @@ export const COPY = {
   confirmPrompt:
     'إذا أتممت آية اليوم — حفظًا أو تدبّرًا لتفسيرها — فاضغط الزر لأنتقل بك إلى التالية 🌿',
   // After a confirmed done advances the reader. Mentions /next for going on now.
-  doneConfirmed:
-    'بارك الله فيك ✓\nانتقلتَ إلى الآية التالية، تصلك في موعدها، أو اكتب /next لقراءتها الآن 🌿',
+  doneConfirmed: `بارك الله فيك ✓\nانتقلتَ إلى الآية التالية، تصلك في موعدها، أو اكتب ${ltr('/next')} لقراءتها الآن 🌿`,
   // Toast when an old/already-used "done" button is tapped (the position has
   // already moved on). Gentle: their progress is recorded, nothing is wrong.
   alreadyDone: 'سجّلنا إتمامك ✓',
