@@ -25,6 +25,23 @@ export function clampReviewCount(value: number): number {
   return n;
 }
 
+// ─── Distant / consolidation review (التثبيت) ──────────────────────────
+// How many previously-CONFIRMED ayat to revisit each day, rotating through the
+// whole memorized corpus so old material does not slip. Smaller cap than the
+// in-surah review: it is a daily nudge, not a study session.
+export const DEFAULT_OLD_REVIEW = 3;
+export const MIN_OLD_REVIEW = 0;
+export const MAX_OLD_REVIEW = 10;
+
+/** Force any number into the allowed distant-review range (0..10). */
+export function clampOldReviewCount(value: number): number {
+  if (!Number.isFinite(value)) return DEFAULT_OLD_REVIEW;
+  const n = Math.trunc(value);
+  if (n < MIN_OLD_REVIEW) return MIN_OLD_REVIEW;
+  if (n > MAX_OLD_REVIEW) return MAX_OLD_REVIEW;
+  return n;
+}
+
 /**
  * The inclusive range of PREVIOUS ayat to review, in the same surah, ending
  * just before today's ayah. Returns null when there is nothing to review:

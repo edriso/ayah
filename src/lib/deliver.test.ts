@@ -14,6 +14,8 @@ const h = vi.hoisted(() => ({
   hasDeliveryFor: vi.fn(),
   commitDelivery: vi.fn(),
   countUnreadDeliveriesBefore: vi.fn(),
+  countConfirmedAyat: vi.fn(),
+  getRevisionAyat: vi.fn(),
   getAyahText: vi.fn(),
   markBlocked: vi.fn(),
   sendMessages: vi.fn(),
@@ -35,6 +37,8 @@ vi.mock('../database', () => ({
   hasDeliveryFor: h.hasDeliveryFor,
   commitDelivery: h.commitDelivery,
   countUnreadDeliveriesBefore: h.countUnreadDeliveriesBefore,
+  countConfirmedAyat: h.countConfirmedAyat,
+  getRevisionAyat: h.getRevisionAyat,
   getAyahText: h.getAyahText,
   markBlocked: h.markBlocked,
   getCachedAyahAudioId: h.getCachedAyahAudioId,
@@ -79,6 +83,7 @@ import {
   buildCompletionMessage,
   deliverDueSubscribers,
   sampleEntryFor,
+  revisionMessagesFor,
 } from './deliver';
 import { COPY } from './copy';
 
@@ -126,6 +131,8 @@ beforeEach(() => {
   h.getEntryById.mockResolvedValue(ENTRY);
   h.getTafseerText.mockResolvedValue('إخلاص العبادة لله وحده.');
   h.countUnreadDeliveriesBefore.mockResolvedValue(0); // not behind by default
+  h.countConfirmedAyat.mockResolvedValue(0); // nothing memorized yet -> no review
+  h.getRevisionAyat.mockResolvedValue([]);
   h.getAyahText.mockResolvedValue({
     text: 'نص آية الفضل',
     surahNameAr: 'القمر',
@@ -251,6 +258,8 @@ describe('deliverDueSubscribers (read-gated scheduler)', () => {
       tafseerEdition: 'muyassar',
       tafseerFormat: 'text',
       reciter: 'husary-muallim',
+      oldReviewCount: 3,
+      reviewCursor: 0,
       trackId: 1,
       startedAt: null,
       currentEntryId: 7,
@@ -349,6 +358,34 @@ describe('deliverDueSubscribers (read-gated scheduler)', () => {
     expect(h.sendAudio).not.toHaveBeenCalled();
     expect(api.sendMessage).not.toHaveBeenCalled(); // no tafseer, no confirm prompt
   });
+
+  it('sends the distant review and advances the cursor when the reader has confirmed ayat', async () => {
+    // oldReviewCount is 3 (deliverableSub), total confirmed is 5, so the window
+    // is 3 ayat and the cursor advances by 3, in the same commit.
+    h.countConfirmedAyat.mockResolvedValue(5);
+    h.getRevisionAyat.mockResolvedValue([
+      { surahNameAr: 'الناس', numberInSurah: 1, text: 'قُلْ أَعُوذُ' },
+      { surahNameAr: 'الفلق', numberInSurah: 1, text: 'قُلْ أَعُوذُ بِرَبِّ الْفَلَقِ' },
+      { surahNameAr: 'الإخلاص', numberInSurah: 1, text: 'قُلْ هُوَ ٱللَّهُ أَحَدٌ' },
+    ]);
+    await deliverDueSubscribers(bot, NOW);
+    expect(h.getRevisionAyat).toHaveBeenCalledWith(1, 0, 3);
+    expect(h.commitDelivery.mock.calls[0][0]).toMatchObject({ nextReviewCursor: 3 });
+    const reviewCall = api.sendMessage.mock.calls.find((c) =>
+      String(c[1]).includes('مراجعة للتثبيت'),
+    );
+    expect(reviewCall).toBeTruthy();
+    expect(reviewCall![2]).toMatchObject({ disable_notification: true }); // silent
+  });
+
+  it('sends no review (and does not advance the cursor) when nothing is confirmed yet', async () => {
+    h.countConfirmedAyat.mockResolvedValue(0);
+    await deliverDueSubscribers(bot, NOW);
+    expect(h.commitDelivery.mock.calls[0][0].nextReviewCursor).toBeUndefined();
+    expect(
+      api.sendMessage.mock.calls.find((c) => String(c[1]).includes('مراجعة للتثبيت')),
+    ).toBeUndefined();
+  });
 });
 
 describe('sampleEntryFor (the "try it on today\'s ayah" preview)', () => {
@@ -403,5 +440,49 @@ describe('buildCompletionMessage', () => {
     const msg = await buildCompletionMessage(ENTRY as never, 6236, true, 1);
     expect(msg!.text).toContain('أتممت القرآن كاملًا');
     expect(msg!.text).toContain('الناس');
+  });
+});
+
+describe('revisionMessagesFor (distant review window + cursor)', () => {
+  const sub = (over: Record<string, unknown> = {}) => ({
+    id: 1,
+    oldReviewCount: 3,
+    reviewCursor: 0,
+    ...over,
+  });
+
+  it('is empty (cursor unchanged) when oldReviewCount is 0', async () => {
+    const out = await revisionMessagesFor(sub({ oldReviewCount: 0, reviewCursor: 4 }));
+    expect(out).toEqual({ messages: [], nextCursor: 4 });
+    expect(h.countConfirmedAyat).not.toHaveBeenCalled();
+  });
+
+  it('is empty when nothing has been confirmed yet', async () => {
+    h.countConfirmedAyat.mockResolvedValue(0);
+    const out = await revisionMessagesFor(sub({ reviewCursor: 9 }));
+    expect(out).toEqual({ messages: [], nextCursor: 9 });
+    expect(h.getRevisionAyat).not.toHaveBeenCalled();
+  });
+
+  it('reads the window at cursor%total and advances the cursor by the count', async () => {
+    h.countConfirmedAyat.mockResolvedValue(10);
+    h.getRevisionAyat.mockResolvedValue([
+      { surahNameAr: 'الفلق', numberInSurah: 1, text: 'قُلْ أَعُوذُ بِرَبِّ الْفَلَقِ' },
+    ]);
+    const out = await revisionMessagesFor(sub({ oldReviewCount: 3, reviewCursor: 12 }));
+    expect(h.getRevisionAyat).toHaveBeenCalledWith(1, 2, 3); // 12 % 10 = 2, want 3
+    expect(out.nextCursor).toBe(15); // 12 + 3
+    expect(out.messages[0]).toContain('مراجعة للتثبيت');
+  });
+
+  it('caps the window to the corpus size when fewer ayat are confirmed than wanted', async () => {
+    h.countConfirmedAyat.mockResolvedValue(2);
+    h.getRevisionAyat.mockResolvedValue([
+      { surahNameAr: 'الناس', numberInSurah: 1, text: 'a' },
+      { surahNameAr: 'الفلق', numberInSurah: 1, text: 'b' },
+    ]);
+    const out = await revisionMessagesFor(sub({ oldReviewCount: 5, reviewCursor: 0 }));
+    expect(h.getRevisionAyat).toHaveBeenCalledWith(1, 0, 2); // min(5, total=2)
+    expect(out.nextCursor).toBe(2);
   });
 });

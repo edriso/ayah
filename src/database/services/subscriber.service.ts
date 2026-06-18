@@ -126,6 +126,18 @@ export function setReviewCount(subscriberId: number, reviewCount: number) {
   });
 }
 
+/**
+ * Update how many previously-CONFIRMED ayat the subscriber revisits each day for
+ * consolidation (0..10, التثبيت). The caller is expected to have clamped the
+ * value with clampOldReviewCount.
+ */
+export function setOldReviewCount(subscriberId: number, oldReviewCount: number) {
+  return prisma.subscriber.update({
+    where: { id: subscriberId },
+    data: { oldReviewCount },
+  });
+}
+
 /** Turn the daily tafseer (sent silently after the ayah) on or off. */
 export function setTafseerEnabled(subscriberId: number, enabled: boolean) {
   return prisma.subscriber.update({

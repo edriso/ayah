@@ -110,6 +110,30 @@ export function formatDailyMessages(input: DailyMessageInput): string[] {
   return chunkPassage(header, lines, SAFE_LIMIT);
 }
 
+/** One ayah in the distant-review list: its text plus where it is from. */
+export interface RevisionAyah {
+  surahNameAr: string;
+  numberInSurah: number;
+  text: string;
+}
+
+/**
+ * Build the «🔄 مراجعة للتثبيت» message(s): a labeled list of previously-
+ * memorized ayat to revisit, each named by its surah (the list spans surahs, so
+ * it is NOT one passage). Empty input -> no message. Plain text, no parse_mode.
+ * Splits across messages at ayah boundaries when long (reuses chunkPassage).
+ */
+export function formatRevisionMessages(items: RevisionAyah[]): string[] {
+  if (items.length === 0) return [];
+  const header = '🔄 مراجعة للتثبيت — آياتٌ سبق أن أتممتَها:';
+  const lines = items.map(
+    (a) => `${a.text} ${ayahMarker(a.numberInSurah)} — سورة ${a.surahNameAr}`,
+  );
+  const combined = `${header}\n\n${lines.join('\n')}`;
+  if (combined.length <= SAFE_LIMIT) return [combined];
+  return chunkPassage(header, lines, SAFE_LIMIT);
+}
+
 /**
  * Pack passage lines into messages no longer than `limit`. The first message
  * carries `firstHeader`; later messages carry the continuation header. A

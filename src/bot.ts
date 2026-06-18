@@ -2,6 +2,7 @@ import { Bot, InlineKeyboard, type Context } from 'grammy';
 import {
   activeDaysList,
   clampReviewCount,
+  clampOldReviewCount,
   MAX_REVIEW_COUNT,
   toAsciiDigits,
   advancePosition,
@@ -12,6 +13,7 @@ import {
   setDeliveryTime,
   setTimezone,
   setReviewCount,
+  setOldReviewCount,
   setTafseerEnabled,
   setTafseerEdition,
   setTafseerFormat,
@@ -60,6 +62,7 @@ import {
   sendConfirmPrompt,
   sendMissedDaysNudge,
   sendAyahNow,
+  revisionMessagesFor,
   READ_CONFIRM,
   type TodayView,
 } from './lib/deliver';
@@ -79,6 +82,11 @@ import {
   SURAH_NOOP,
 } from './lib/surah-keyboard';
 import { buildReciterKeyboard, RECITER_PICK_PREFIX } from './lib/reciter-keyboard';
+import {
+  buildReviewKeyboard,
+  REVIEW_RECENT_PREFIX,
+  REVIEW_OLD_PREFIX,
+} from './lib/review-keyboard';
 import { buildTafseerKeyboard, TAFSEER_PICK_PREFIX } from './lib/tafseer-keyboard';
 import { parseTime, isValidTimezone, parseSurahArg, parseAyahPreview } from './lib/parse';
 
@@ -325,9 +333,13 @@ export async function sendTodayView(
 
   for (const message of view.messages) await ctx.reply(message);
 
+  // The distant review is computed BEFORE the commit (reads only past
+  // confirmations) so its cursor advances in the same transaction, once per day.
+  const revision = view.record ? await revisionMessagesFor(sub) : { messages: [], nextCursor: 0 };
+
   // Record today's delivery (no advance — the position moves on a confirmed
   // done). Only on a free day (view.record). 'duplicate' = the scheduler beat
-  // us to it; then we send no tafseer/audio (each arrives once, with the day).
+  // us to it; then we send no tafseer/audio/review (each arrives once, with the day).
   let recorded = false;
   if (view.record) {
     const committed = await commitDelivery({
@@ -335,12 +347,14 @@ export async function sendTodayView(
       entry: view.record.entry,
       scheduledFor: view.record.scheduledFor,
       startedAt: sub.startedAt,
+      nextReviewCursor: revision.messages.length > 0 ? revision.nextCursor : undefined,
       now,
     });
     recorded = committed === 'sent';
   }
   if (recorded && view.record) {
-    // In reading order, both SILENT: the recitation, then the tafseer.
+    // In reading order, all SILENT: the recitation, then the tafseer, then the
+    // distant-review block.
     await deliverAyahAudio(bot, sub.telegramId, view.record.entry, sub.reciter);
     try {
       for (const message of view.tafseer) {
@@ -349,8 +363,11 @@ export async function sendTodayView(
           reply_markup: tafseerReplyMarkup(message),
         });
       }
+      for (const message of revision.messages) {
+        await ctx.reply(message, { disable_notification: true });
+      }
     } catch (err) {
-      logger.warn('Failed to send tafseer for /today', {
+      logger.warn('Failed to send tafseer/review for /today', {
         subscriberId: sub.id,
         error: String(err),
       });
@@ -554,7 +571,10 @@ bot.command('review', async (ctx) => {
   if (!sub) return;
   const arg = commandArg(ctx, 'review');
   if (!arg) {
-    await ctx.reply(COPY.reviewUsage(sub.reviewCount));
+    // The review card: both the recent (in-surah) and the تثبيت (distant) knobs.
+    await ctx.reply(COPY.reviewCard(sub.reviewCount, sub.oldReviewCount), {
+      reply_markup: buildReviewKeyboard(sub.reviewCount, sub.oldReviewCount),
+    });
     return;
   }
   // Accept Arabic-Indic digits, and only a plain 1-2 digit number (no hex,
@@ -567,6 +587,36 @@ bot.command('review', async (ctx) => {
   const count = clampReviewCount(Number(normalized));
   await setReviewCount(sub.id, count);
   await ctx.reply(COPY.reviewUpdated(count));
+});
+
+// Review card: pick the RECENT (in-surah) count.
+bot.callbackQuery(new RegExp(`^${REVIEW_RECENT_PREFIX}(\\d+)$`), async (ctx) => {
+  const sub = await subscriberFor(ctx);
+  if (!sub) {
+    await ctx.answerCallbackQuery();
+    return;
+  }
+  const recent = clampReviewCount(Number(ctx.match![1]));
+  await setReviewCount(sub.id, recent);
+  await ctx
+    .editMessageReplyMarkup({ reply_markup: buildReviewKeyboard(recent, sub.oldReviewCount) })
+    .catch(ignoreNotModified);
+  await ctx.answerCallbackQuery({ text: COPY.reviewRecentSet(recent) });
+});
+
+// Review card: pick the تثبيت (distant/consolidation) count.
+bot.callbackQuery(new RegExp(`^${REVIEW_OLD_PREFIX}(\\d+)$`), async (ctx) => {
+  const sub = await subscriberFor(ctx);
+  if (!sub) {
+    await ctx.answerCallbackQuery();
+    return;
+  }
+  const old = clampOldReviewCount(Number(ctx.match![1]));
+  await setOldReviewCount(sub.id, old);
+  await ctx
+    .editMessageReplyMarkup({ reply_markup: buildReviewKeyboard(sub.reviewCount, old) })
+    .catch(ignoreNotModified);
+  await ctx.answerCallbackQuery({ text: COPY.reviewOldSet(old) });
 });
 
 // /tafsir [on|off|<edition>]: the tafseer (sent silently after the ayah). With
@@ -1222,7 +1272,7 @@ async function setBotProfile() {
     { command: 'order', description: 'اختيار الترتيب (المصحف أو الحفظ)' },
     { command: 'time', description: 'ضبط وقت الإرسال' },
     { command: 'days', description: 'اختيار أيام الإرسال' },
-    { command: 'review', description: 'عدد آيات المراجعة' },
+    { command: 'review', description: 'المراجعة: القريبة ومراجعة التثبيت' },
     { command: 'tafsir', description: 'التفسير: تشغيله واختياره وطريقة وصوله' },
     { command: 'reciter', description: 'اختيار القارئ (التلاوة الصوتية)' },
     { command: 'timezone', description: 'ضبط المنطقة الزمنية' },

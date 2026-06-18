@@ -4,8 +4,11 @@ import {
   advancePosition,
   isSurahComplete,
   clampReviewCount,
+  clampOldReviewCount,
   DEFAULT_REVIEW_COUNT,
+  DEFAULT_OLD_REVIEW,
   MAX_REVIEW_COUNT,
+  MAX_OLD_REVIEW,
 } from './review';
 
 describe('reviewRange (previous ayat, excludes today)', () => {
@@ -57,6 +60,17 @@ describe('clampReviewCount', () => {
     expect(clampReviewCount(999)).toBe(MAX_REVIEW_COUNT);
     expect(clampReviewCount(7.9)).toBe(7);
     expect(clampReviewCount(NaN)).toBe(DEFAULT_REVIEW_COUNT);
+  });
+});
+
+describe('clampOldReviewCount (distant/تثبيت review)', () => {
+  it('keeps in-range values and clamps the rest', () => {
+    expect(clampOldReviewCount(0)).toBe(0);
+    expect(clampOldReviewCount(3)).toBe(3);
+    expect(clampOldReviewCount(10)).toBe(10);
+    expect(clampOldReviewCount(-1)).toBe(0);
+    expect(clampOldReviewCount(99)).toBe(MAX_OLD_REVIEW);
+    expect(clampOldReviewCount(NaN)).toBe(DEFAULT_OLD_REVIEW);
   });
 });
 

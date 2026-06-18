@@ -72,6 +72,7 @@ vi.mock('./lib/deliver', () => ({
   sendConfirmPrompt: h.sendConfirmPrompt,
   sendMissedDaysNudge: h.sendMissedDaysNudge,
   sendAyahNow: h.sendAyahNow,
+  revisionMessagesFor: vi.fn(() => Promise.resolve({ messages: [], nextCursor: 0 })),
   previewAyah: vi.fn(),
   tafseerMessagesFor: vi.fn(),
   sampleEntryFor: vi.fn(),

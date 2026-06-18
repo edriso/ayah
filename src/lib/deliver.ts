@@ -4,9 +4,11 @@ import {
   ayahAudioUrl,
   dueLocalDate,
   formatDailyMessages,
+  formatRevisionMessages,
   formatTafseerMessages,
   tafseerLink,
   isTafseerFormat,
+  clampOldReviewCount,
   getLocalContext,
   isDayActive,
   toArabicDigits,
@@ -17,6 +19,8 @@ import {
   hasDeliveryFor,
   getDeliveryFor,
   countUnreadDeliveriesBefore,
+  countConfirmedAyat,
+  getRevisionAyat,
   resolveTargetEntry,
   commitDelivery,
   surahCompletionFor,
@@ -219,6 +223,34 @@ export async function sendMissedDaysNudge(
   }
 }
 
+/** Fields revisionMessagesFor needs off a subscriber row. */
+export interface RevisionSubscriber {
+  id: number;
+  oldReviewCount: number;
+  reviewCursor: number;
+}
+
+/**
+ * The distant-review («مراجعة للتثبيت») message(s) for today, plus the cursor
+ * to persist. Rotates `oldReviewCount` ayat through the subscriber's confirmed
+ * corpus in track order, looping. Empty (cursor unchanged) when the feature is
+ * off or nothing has been confirmed yet. The caller sends the messages SILENTLY
+ * on a real delivery and passes `nextCursor` into commitDelivery, so the
+ * rotation advances exactly once per recorded day.
+ */
+export async function revisionMessagesFor(
+  sub: RevisionSubscriber,
+): Promise<{ messages: string[]; nextCursor: number }> {
+  const want = clampOldReviewCount(sub.oldReviewCount);
+  if (want === 0) return { messages: [], nextCursor: sub.reviewCursor };
+  const total = await countConfirmedAyat(sub.id);
+  if (total === 0) return { messages: [], nextCursor: sub.reviewCursor };
+  const count = Math.min(want, total);
+  const offset = ((sub.reviewCursor % total) + total) % total; // safe modulo
+  const ayat = await getRevisionAyat(sub.id, offset, count);
+  return { messages: formatRevisionMessages(ayat), nextCursor: sub.reviewCursor + count };
+}
+
 /** Fields sendAyahNow needs off a subscriber row. */
 export interface AyahNowSubscriber {
   telegramId: bigint;
@@ -314,19 +346,26 @@ export async function deliverDueSubscribers(
         continue; // nothing recorded; retried next tick
       }
 
+      // Compute the distant review BEFORE the commit (it reads only past
+      // confirmations, never today's), so its cursor advances in the same
+      // transaction — exactly once per recorded day.
+      const revision = await revisionMessagesFor(sub);
+
       // Record the day (no advance — the position moves on a confirmed done).
       const committed = await commitDelivery({
         subscriberId: sub.id,
         entry,
         scheduledFor,
         startedAt: sub.startedAt,
+        nextReviewCursor: revision.messages.length > 0 ? revision.nextCursor : undefined,
         now,
       });
       if (committed === 'sent') {
         stats.sent++;
 
-        // Follow the ayah, in reading order, with the recitation then the
-        // tafseer — both SILENT — so each arrives once, the day it is delivered.
+        // Follow the ayah, in reading order, all SILENT: the recitation, then
+        // the tafseer, then the distant-review block — so each arrives once, the
+        // day it is delivered.
         await deliverAyahAudio(bot, sub.telegramId, entry, sub.reciter);
         try {
           for (const msg of await tafseerMessagesFor(entry, sub)) {
@@ -337,6 +376,13 @@ export async function deliverDueSubscribers(
           }
         } catch (err) {
           logger.error('Failed to send tafseer', { id: sub.id, error: String(err) });
+        }
+        try {
+          for (const msg of revision.messages) {
+            await bot.api.sendMessage(Number(sub.telegramId), msg, { disable_notification: true });
+          }
+        } catch (err) {
+          logger.error('Failed to send revision', { id: sub.id, error: String(err) });
         }
 
         // Finally, the "أتممتُها — التالية" button. Tapping it advances and (if

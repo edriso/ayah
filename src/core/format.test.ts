@@ -1,8 +1,43 @@
 import { describe, it, expect } from 'vitest';
-import { formatDailyMessages, ayahMarker, formatAyahLine, TELEGRAM_MAX } from './format';
+import {
+  formatDailyMessages,
+  formatRevisionMessages,
+  ayahMarker,
+  formatAyahLine,
+  TELEGRAM_MAX,
+  SAFE_LIMIT,
+} from './format';
 import { toArabicDigits } from './arabic';
 
 const surah = { number: 112, nameAr: 'الإخلاص' };
+
+describe('formatRevisionMessages (distant/تثبيت review)', () => {
+  it('returns nothing for an empty list', () => {
+    expect(formatRevisionMessages([])).toEqual([]);
+  });
+
+  it('labels each ayah by surah and number under the review header', () => {
+    const msgs = formatRevisionMessages([
+      { surahNameAr: 'الناس', numberInSurah: 1, text: 'قُلْ أَعُوذُ' },
+      { surahNameAr: 'الفلق', numberInSurah: 5, text: 'وَمِن شَرِّ حَاسِدٍ' },
+    ]);
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0]).toContain('مراجعة للتثبيت');
+    expect(msgs[0]).toContain('قُلْ أَعُوذُ ﴿١﴾ — سورة الناس');
+    expect(msgs[0]).toContain('وَمِن شَرِّ حَاسِدٍ ﴿٥﴾ — سورة الفلق');
+  });
+
+  it('splits across messages when the list is very long', () => {
+    const many = Array.from({ length: 400 }, (_, i) => ({
+      surahNameAr: 'البقرة',
+      numberInSurah: (i % 286) + 1,
+      text: 'نص طويل '.repeat(20).trim(),
+    }));
+    const msgs = formatRevisionMessages(many);
+    expect(msgs.length).toBeGreaterThan(1);
+    for (const m of msgs) expect(m.length).toBeLessThanOrEqual(SAFE_LIMIT);
+  });
+});
 
 describe('arabic helpers', () => {
   it('converts numbers to Arabic-Indic digits', () => {

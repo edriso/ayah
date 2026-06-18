@@ -25,6 +25,12 @@ developer can work on it.
   the same ayah repeats each day (with a gentle nudge after a missed day). On
   long surahs the review is split across several messages so it never exceeds
   Telegram's size limit.
+- **Consolidation review (التثبيت).** Memorizing is half the work; keeping it is
+  the other half. So each day, alongside the new ayah, the bot also revisits a
+  few **previously-memorized** ayat — silently — rotating through everything the
+  person has confirmed so the old never slips (the classic المراجعة البعيدة).
+  It only ever shows what they've actually completed, grows with their progress,
+  and the daily count (default 3, 0 to turn off) is set with `/review`.
 - Right after the ayah, the bot can send that ayah's **recitation audio** (in a
   reciter the person chooses, or none) and its **tafseer** — both as **silent**
   messages, no second notification sound. The tafseer is on by default; with
@@ -110,7 +116,8 @@ refuses to write anything that does not match.
 - `/order` pick the order: from An-Nas (hifz) or from Al-Fatihah (Mushaf)
 - `/time HH:MM` set the daily send time
 - `/days` pick which weekdays you receive ayat
-- `/review N` how many previous ayat to review (0 to 20, default 10)
+- `/review` set the review: the recent (in-surah, 0–20) and the daily
+  consolidation review of old memorized ayat (التثبيت, 0–10)
 - `/tafsir` the silent tafseer after the ayah: turn it on/off, choose which one
   (التفسير الميسر / المختصر / السعدي / ابن كثير), and how it arrives (text or link)
 - `/reciter` pick the reciter for the silent recitation audio, or turn it off

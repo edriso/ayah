@@ -137,9 +137,13 @@ export async function commitDelivery(params: {
   scheduledFor: string;
   /** The subscriber's current startedAt, so we stamp it only the first time. */
   startedAt: Date | null;
+  /** The distant-review rotation index to advance to (already wrapped/incremented).
+   *  Omitted when no review went out, so the cursor only moves on a real review
+   *  send — a daily drip, in the same transaction as the delivery. */
+  nextReviewCursor?: number;
   now?: Date;
 }): Promise<CommitResult> {
-  const { subscriberId, entry, scheduledFor, startedAt } = params;
+  const { subscriberId, entry, scheduledFor, startedAt, nextReviewCursor } = params;
   const now = params.now ?? new Date();
 
   try {
@@ -152,6 +156,8 @@ export async function commitDelivery(params: {
         data: {
           // Mark where they are now (no advance — that happens on confirm).
           currentEntryId: entry.id,
+          // Advance the distant-review rotation only when a review went out.
+          ...(nextReviewCursor !== undefined ? { reviewCursor: nextReviewCursor } : {}),
           // Stamp the "member since" time on the very first delivery only.
           ...(startedAt === null ? { startedAt: now } : {}),
         },
@@ -162,6 +168,66 @@ export async function commitDelivery(params: {
     if ((err as { code?: string }).code === 'P2002') return 'duplicate';
     throw err;
   }
+}
+
+// ─── Distant / consolidation review (التثبيت) corpus ─────────────────
+//
+// "Memorized" = the distinct track entries that have at least one CONFIRMED
+// delivery for this subscriber. The distant review rotates through them in
+// track (mushaf) order.
+
+/** How many distinct ayat the subscriber has confirmed (the review corpus size). */
+export function countConfirmedAyat(subscriberId: number): Promise<number> {
+  return prisma.trackEntry.count({
+    where: { deliveries: { some: { subscriberId, confirmedAt: { not: null } } } },
+  });
+}
+
+const revisionSelect = {
+  ayah: {
+    select: { numberInSurah: true, text: true, surah: { select: { nameAr: true } } },
+  },
+} as const;
+
+/**
+ * `count` confirmed ayat for the distant review, in track order, starting at
+ * `offset` and wrapping past the end. The caller MUST pass `count <= total`
+ * (the confirmed corpus size) so the wrap never returns a duplicate. Returns
+ * each ayah as { surahNameAr, numberInSurah, text } for the formatter.
+ */
+export async function getRevisionAyat(
+  subscriberId: number,
+  offset: number,
+  count: number,
+): Promise<{ surahNameAr: string; numberInSurah: number; text: string }[]> {
+  if (count <= 0) return [];
+  const where = { deliveries: { some: { subscriberId, confirmedAt: { not: null } } } };
+  const head = await prisma.trackEntry.findMany({
+    where,
+    orderBy: { position: 'asc' },
+    skip: offset,
+    take: count,
+    select: revisionSelect,
+  });
+  // Wrap: if the window ran off the end, take the remainder from the start.
+  const rows =
+    head.length < count
+      ? [
+          ...head,
+          ...(await prisma.trackEntry.findMany({
+            where,
+            orderBy: { position: 'asc' },
+            skip: 0,
+            take: count - head.length,
+            select: revisionSelect,
+          })),
+        ]
+      : head;
+  return rows.map((r) => ({
+    surahNameAr: r.ayah.surah.nameAr,
+    numberInSurah: r.ayah.numberInSurah,
+    text: r.ayah.text,
+  }));
 }
 
 export type ConfirmResult = 'advanced' | 'already';

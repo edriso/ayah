@@ -130,3 +130,19 @@ Suggested as a way to reach more people. The reading/curriculum engine
 (`src/core`, `src/database`) is deliberately free of Telegram specifics, so it
 could back a future app. This is a separate product, not a change to the bot;
 recorded here so the engine stays adapter-agnostic.
+
+## Smarter consolidation review (التثبيت) — built v1, room to grow
+
+**Shipped:** a daily distant-review block (`oldReviewCount`, default 3) that
+rotates through the subscriber's CONFIRMED ayat in track order via `reviewCursor`
+so old memorization does not slip. See "Consolidation review" in CLAUDE.md.
+
+What is still future:
+- **Per-item spaced repetition with self-rating.** A «ثبّتها ✓ / تحتاج مراجعة»
+  button on each review ayah would reschedule it per item (1d → 3d → 1w → 2w…),
+  so weak ayat resurface sooner. It needs per-ayah review state and adds a daily
+  tap; the cyclic rotation was chosen for v1 because the bot can't hear recitation
+  (no real recall signal) and the rotation matches how huffaz actually revise.
+- **Recent-review continuity across surah boundaries.** The in-surah passage is
+  empty on a surah's first ayah; a corpus-based recent window (last N confirmed,
+  across surahs) would close that gap.

@@ -12,6 +12,8 @@ const h = vi.hoisted(() => ({
   logFindFirst: vi.fn(),
   logCount: vi.fn(),
   entryFindUnique: vi.fn(),
+  entryFindMany: vi.fn(),
+  entryCount: vi.fn(),
   transaction: vi.fn(),
 }));
 
@@ -24,7 +26,7 @@ vi.mock('../client', () => ({
       findFirst: h.logFindFirst,
       count: h.logCount,
     },
-    trackEntry: { findUnique: h.entryFindUnique },
+    trackEntry: { findUnique: h.entryFindUnique, findMany: h.entryFindMany, count: h.entryCount },
     $transaction: h.transaction,
   },
 }));
@@ -34,6 +36,8 @@ import {
   confirmRead,
   getLatestUnconfirmedDelivery,
   countUnreadDeliveriesBefore,
+  countConfirmedAyat,
+  getRevisionAyat,
 } from './delivery.service';
 
 const NOW = new Date('2026-06-18T06:00:00Z');
@@ -75,6 +79,27 @@ describe('commitDelivery (records, no advance)', () => {
       now: NOW,
     });
     expect(h.subUpdate.mock.calls[0][0].data).toMatchObject({ startedAt: NOW });
+  });
+
+  it('advances the review cursor only when given (the daily review drip)', async () => {
+    await commitDelivery({
+      subscriberId: 1,
+      entry: ENTRY,
+      scheduledFor: '2026-06-18',
+      startedAt: new Date(),
+      nextReviewCursor: 9,
+      now: NOW,
+    });
+    expect(h.subUpdate.mock.calls[0][0].data).toMatchObject({ reviewCursor: 9 });
+    h.subUpdate.mockClear();
+    await commitDelivery({
+      subscriberId: 1,
+      entry: ENTRY,
+      scheduledFor: '2026-06-19',
+      startedAt: new Date(),
+      now: NOW,
+    });
+    expect(h.subUpdate.mock.calls[0][0].data).not.toHaveProperty('reviewCursor');
   });
 
   it('reports a duplicate (the per-day unique lock) instead of throwing', async () => {
@@ -165,5 +190,51 @@ describe('getLatestUnconfirmedDelivery / countUnreadDeliveriesBefore', () => {
         scheduledFor: { lt: '2026-06-18' },
       },
     });
+  });
+});
+
+describe('distant-review corpus (التثبيت)', () => {
+  const entryRow = (surahNameAr: string, n: number, text: string) => ({
+    ayah: { numberInSurah: n, text, surah: { nameAr: surahNameAr } },
+  });
+
+  it('countConfirmedAyat counts distinct confirmed entries', async () => {
+    h.entryCount.mockResolvedValue(12);
+    expect(await countConfirmedAyat(1)).toBe(12);
+    expect(h.entryCount.mock.calls[0][0]).toMatchObject({
+      where: { deliveries: { some: { subscriberId: 1, confirmedAt: { not: null } } } },
+    });
+  });
+
+  it('getRevisionAyat reads the window in track order and maps to labeled ayat', async () => {
+    h.entryFindMany.mockResolvedValueOnce([
+      entryRow('الناس', 1, 'قُلْ أَعُوذُ'),
+      entryRow('الفلق', 5, 'وَمِن شَرِّ حَاسِدٍ'),
+    ]);
+    const out = await getRevisionAyat(1, 4, 2);
+    expect(out).toEqual([
+      { surahNameAr: 'الناس', numberInSurah: 1, text: 'قُلْ أَعُوذُ' },
+      { surahNameAr: 'الفلق', numberInSurah: 5, text: 'وَمِن شَرِّ حَاسِدٍ' },
+    ]);
+    expect(h.entryFindMany.mock.calls[0][0]).toMatchObject({
+      orderBy: { position: 'asc' },
+      skip: 4,
+      take: 2,
+    });
+  });
+
+  it('getRevisionAyat wraps to the start when the window runs off the end', async () => {
+    h.entryFindMany
+      .mockResolvedValueOnce([entryRow('الإخلاص', 4, 'ولم يكن')]) // 1 of 2 (hit the end)
+      .mockResolvedValueOnce([entryRow('الفاتحة', 1, 'الحمد لله')]); // wrap: 1 from the start
+    const out = await getRevisionAyat(1, 9, 2);
+    expect(out.map((a) => a.surahNameAr)).toEqual(['الإخلاص', 'الفاتحة']);
+    expect(h.entryFindMany).toHaveBeenCalledTimes(2);
+    expect(h.entryFindMany.mock.calls[1][0]).toMatchObject({ skip: 0, take: 1 });
+  });
+
+  it('getRevisionAyat returns nothing for a zero count', async () => {
+    expect(await getRevisionAyat(1, 0, 0)).toEqual([]);
+    expect(h.entryFindMany).not.toHaveBeenCalled();
   });
 });
