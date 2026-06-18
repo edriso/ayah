@@ -5,9 +5,11 @@ purpose. The aim is that a junior developer can read this and be productive.
 
 ## What this is
 
-Ayah is a Telegram bot that sends one Quran ayah a day to each subscriber,
-with the previous ayat of the same surah for review (a per-user count, 0-20,
-default 10). Right after the ayah it can also send that ayah's
+Ayah is a Telegram bot that walks each subscriber through the Quran one ayah a
+day — to **memorize** it, or simply to **reflect on its tafsir** (the tafsir
+makes it serve both). It sends one ayah a day with the previous ayat of the
+same surah for review (a per-user count, 0-20, default 10). Right after the
+ayah it can also send that ayah's
 recitation audio (in a chosen reciter's voice) and its tafseer, both as SILENT
 messages (no notification sound). The tafseer is on by default (`/tafsir`); the
 subscriber picks WHICH tafseer (التفسير الميسر — the default, المختصر, السعدي,
