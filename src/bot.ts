@@ -26,7 +26,6 @@ import {
   resolveTargetEntry,
   getEntryForAyah,
   getEntryAtPosition,
-  getEntryById,
   countTrackEntries,
   getTrackById,
   getProgressView,
@@ -305,11 +304,14 @@ function isAdmin(ctx: Context): boolean {
 }
 
 /**
- * Reply a TodayView's messages and, if it carries a claim, record it as today's
- * delivery so the scheduler does not send the same ayah again. Shared by /today
- * and the reposition flow. The claim is committed only AFTER the messages are
- * shown, so a failed reply leaves the day unclaimed; the unique (subscriber,
- * date) index makes it safe even if the scheduler races (see scheduler.ts).
+ * Reply a TodayView's messages and, if it carries a `record`, record it as
+ * today's delivery so the scheduler does not send the same ayah again. Shared by
+ * /today and the reposition flow. Read-gated: recording does NOT advance the
+ * position (the subscriber advances on a confirmed done), and is committed only
+ * AFTER the messages are shown, so a failed reply leaves the day unrecorded; the
+ * unique (subscriber, date) index makes it safe even if the scheduler races. A
+ * gentle missed-days nudge leads, and the "أتممتُها" button rides every shown
+ * ayah (unless paused).
  */
 export async function sendTodayView(
   ctx: Context,
@@ -458,17 +460,17 @@ bot.command('pause', async (ctx) => {
   await togglePause(ctx, sub);
 });
 
-// /today: read today's ayah now. Pulling it before the scheduled send COUNTS
-// as today's delivery (we record it and move forward), so the bot does not send
-// the same ayah again at the user's send time. Pulling it again the same day
-// just re-shows it. On an off day or while paused it stays a pure peek.
+// /today: read today's ayah now. Pulling it before the scheduled send RECORDS
+// today's delivery (so the bot does not send the same ayah again at the user's
+// time) but does NOT advance — the position moves only on a confirmed done.
+// Pulling it again the same day re-shows it. On an off day or while paused it
+// stays a pure peek. The "أتممتُها" button rides the shown ayah either way.
 //
-// We commit AFTER the messages are shown, so a failed reply leaves the day
-// unclaimed and the scheduler still delivers next tick. The unique
+// We record AFTER the messages are shown, so a failed reply leaves the day
+// unrecorded and the scheduler still delivers next tick. The unique
 // (subscriber, date) index keeps it safe even if the scheduler races at the
 // same minute (the loser's commit returns 'duplicate'); the only residual
-// artifact of that sub-second race is one duplicate message, never a double
-// advance. See the note in scheduler.ts.
+// artifact of that sub-second race is one duplicate message. See scheduler.ts.
 bot.command('today', async (ctx) => {
   const sub = await subscriberFor(ctx);
   if (!sub) return;
@@ -901,21 +903,20 @@ bot.callbackQuery(new RegExp(`^${COMPLETE_RESTART_PREFIX}(\\d+)$`), async (ctx) 
 
 // ─── "أتممتُها — التالية" (mark done) button ─────────────────────────
 //
-// Advances one ayah and marks the day(s) done. Idempotent: it works off the
-// latest unconfirmed delivery and confirmRead's compare-and-set, so a double
-// tap or a stale button from an earlier day is a harmless no-op. The tapped
-// button is removed in place (Telegram best practice). If the confirmed ayah
-// finished a surah, the milestone follows.
+// Advances one ayah and marks the day(s) done. It confirms the CURRENT (visible)
+// ayah — `resolveTargetEntry`, which is what the reader is looking at, even after
+// a /surah jump on an already-delivered day — gated by there being an unconfirmed
+// delivery so it stays idempotent: confirmRead's compare-and-set advances once,
+// and a double/stale tap (or no pending delivery) is a harmless no-op. The tapped
+// button is removed in place. If the confirmed ayah finished a surah, the
+// milestone follows.
 export async function handleDone(ctx: Context, sub: Subscriber): Promise<void> {
   const latest = await getLatestUnconfirmedDelivery(sub.id);
-  if (!latest) {
+  const entry = latest ? await resolveTargetEntry(sub) : null;
+  if (!entry) {
+    // Nothing pending to confirm (already done, or no delivery yet). No-op.
     await ctx.editMessageReplyMarkup().catch(ignoreNotModified);
     await ctx.answerCallbackQuery({ text: COPY.alreadyDone });
-    return;
-  }
-  const entry = await getEntryById(latest.trackEntryId);
-  if (!entry) {
-    await ctx.answerCallbackQuery();
     return;
   }
   const [totalEntries, track] = await Promise.all([
@@ -933,9 +934,11 @@ export async function handleDone(ctx: Context, sub: Subscriber): Promise<void> {
   await ctx.editMessageReplyMarkup().catch(ignoreNotModified); // drop the button either way
   if (result === 'advanced') {
     await ctx.answerCallbackQuery();
-    await ctx.reply(COPY.doneConfirmed);
+    // When this ayah finished a surah, the milestone IS the acknowledgment
+    // (don't also send the generic "moved on" line). Otherwise, confirm plainly.
     const completion = await buildCompletionMessage(entry, totalEntries, loops, sub.id);
     if (completion) await ctx.reply(completion.text, { reply_markup: completion.keyboard });
+    else await ctx.reply(COPY.doneConfirmed);
   } else {
     await ctx.answerCallbackQuery({ text: COPY.alreadyDone });
   }

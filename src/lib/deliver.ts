@@ -500,9 +500,9 @@ export interface CompletionMessage {
 }
 
 /**
- * Build the milestone message for a delivery, when its ayah completed a surah.
- * Shared by the scheduler and the /today (claim) path so both celebrate the
- * same way. Returns null on a non-boundary ayah (the common case).
+ * Build the milestone message for a confirmed ayah, when it completed a surah.
+ * Read-gated, so it fires on the DONE confirm (handleDone / /next), not on the
+ * send. Returns null on a non-boundary ayah (the common case).
  */
 export async function buildCompletionMessage(
   entry: EntryWithAyah,

@@ -218,6 +218,17 @@ describe('handleDone (the "أتممتُها" button)', () => {
     expect(h.confirmRead).not.toHaveBeenCalled();
     expect(ctx.editMessageReplyMarkup).toHaveBeenCalled(); // stale button removed
   });
+
+  it('advances the CURRENT (visible) ayah, not the stale delivered one (after a /surah jump)', async () => {
+    // A jump on an already-delivered day: the latest unconfirmed delivery still
+    // points to the morning ayah, but currentEntryId is the just-set one. The
+    // button must advance what the reader is looking at (resolveTargetEntry).
+    const CURRENT = { ...(ENTRY as object), id: 42, position: 9 } as never;
+    h.getLatestUnconfirmedDelivery.mockResolvedValue({ trackEntryId: 7 }); // the stale morning one
+    h.resolveTargetEntry.mockResolvedValue(CURRENT); // what they are viewing now
+    await handleDone(fakeCtx() as never, SUB);
+    expect(h.confirmRead).toHaveBeenCalledWith(expect.objectContaining({ entry: CURRENT }));
+  });
 });
 
 describe('advanceAndShowNext (/next)', () => {

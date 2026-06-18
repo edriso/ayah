@@ -9,15 +9,16 @@ const tasks: ScheduledTask[] = [];
 // longer than a minute would otherwise let the next cron tick (or the startup
 // catch-up) start a second batch, and both could send to the same subscriber
 // before either records the delivery. The per-day unique index stops a double
-// RECORD/advance; this guard stops a double SEND between batches. (Assumes a
-// single bot process; horizontal scaling would need a database lock instead.)
+// RECORD; this guard stops a double SEND between batches. (Assumes a single bot
+// process; horizontal scaling would need a database lock instead.)
 //
 // Note: /today is a second, interactive sender that runs OUTSIDE this lock (it
-// claims today's delivery when a user reads their ayah early). The unique index
-// still prevents any double record/advance, so the only residual race is a user
-// running /today in the exact sub-second their scheduled send fires, which can
-// duplicate one message. Benign and near-impossible; a fuller fix would need a
-// per-subscriber mutex, not worth it under the single-process model.
+// records today's delivery when a user reads their ayah early). The unique index
+// still prevents any double record, so the only residual race is a user running
+// /today in the exact sub-second their scheduled send fires, which can duplicate
+// one message. Benign and near-impossible; a fuller fix would need a
+// per-subscriber mutex, not worth it under the single-process model. (Read-gated:
+// neither path advances the position — that happens only on a confirmed done.)
 let deliveryRunning = false;
 
 /**
