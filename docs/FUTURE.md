@@ -113,3 +113,20 @@ What is still future: counting repeat khatmas. A looping track wraps back to
 An-Nas after the whole Quran, but at one ayah a day a full loop takes about 17
 years, so a per-khatma counter (e.g. a `khatmaCount` field) is only worth
 building once a shorter track — say Juz Amma only — ships.
+
+## Other riwayat (Warsh, Qalun, ...) — from community feedback
+
+A subscriber memorizing in a riwayah other than Hafs wants both the text and a
+reciter in that riwayah. This is a large data effort, not a quick add: the
+seeded Quran text is Hafs, so another riwayah means a second verified text
+edition (its own per-ayah rows and count oracle) AND a matching audio set, plus
+a per-subscriber riwayah choice that selects both. Worth doing, but it is its
+own project — keep it separate from the Hafs reciter list (which is easy to grow
+within `reference/reciters.ts` when a trusted everyayah folder exists).
+
+## A native app (App Store / Play Store) — from community feedback
+
+Suggested as a way to reach more people. The reading/curriculum engine
+(`src/core`, `src/database`) is deliberately free of Telegram specifics, so it
+could back a future app. This is a separate product, not a change to the bot;
+recorded here so the engine stays adapter-agnostic.

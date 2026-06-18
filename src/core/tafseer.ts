@@ -150,13 +150,26 @@ export function formatTafseerMessages(input: TafseerMessageInput): TafseerMessag
   // Inline edition in text mode: the full commentary. One message when it fits
   // (the normal case for a concise edition); split at word boundaries only when
   // it is longer than the limit. The first piece carries the full header, later
-  // pieces the short continuation one.
+  // pieces the short continuation one. The LAST message always carries the
+  // "read in full" link (when one is supplied): the tafseer text is faithful to
+  // the source, so when it is a cross-reference ("سبق الكلام عليها في أول سورة
+  // البقرة") the reader is one tap from the full text on the trusted site —
+  // exactly how other apps send them to the referenced place. We never
+  // substitute or invent text.
   const combined = `${header}\n\n${text}`;
-  if (combined.length <= SAFE_LIMIT) return [{ text: combined }];
+  if (combined.length <= SAFE_LIMIT) {
+    const message: TafseerMessage = { text: combined };
+    if (input.link) message.readMoreUrl = input.link;
+    return [message];
+  }
 
   const room = Math.max(1, SAFE_LIMIT - header.length - 2);
   const pieces = splitText(text, room);
-  return pieces.map((piece, i) => ({ text: `${i === 0 ? header : CONTINUED_HEADER}\n\n${piece}` }));
+  return pieces.map((piece, i) => {
+    const message: TafseerMessage = { text: `${i === 0 ? header : CONTINUED_HEADER}\n\n${piece}` };
+    if (input.link && i === pieces.length - 1) message.readMoreUrl = input.link;
+    return message;
+  });
 }
 
 /**

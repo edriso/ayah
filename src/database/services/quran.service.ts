@@ -116,6 +116,21 @@ export async function getBasmala(): Promise<string> {
   return basmalaCache;
 }
 
+/**
+ * The verified text of a single ayah by (surah, ayah), with its surah's Arabic
+ * name, or null if not seeded. Used for the missed-days encouragement, whose
+ * ayah is NAMED in reference data and whose text is read from here (never typed).
+ */
+export async function getAyahText(surahNumber: number, numberInSurah: number) {
+  const row = await prisma.ayah.findUnique({
+    where: { surahNumber_numberInSurah: { surahNumber, numberInSurah } },
+    select: { numberInSurah: true, text: true, surah: { select: { nameAr: true } } },
+  });
+  return row
+    ? { numberInSurah: row.numberInSurah, text: row.text, surahNameAr: row.surah.nameAr }
+    : null;
+}
+
 /** The review window ayat (ascending) for the same surah, inclusive. */
 export function getReviewAyat(surahNumber: number, from: number, to: number) {
   return prisma.ayah.findMany({

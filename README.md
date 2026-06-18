@@ -1,10 +1,13 @@
 # Ayah
 
-A Telegram bot that helps people memorize the Quran. It sends one ayah a
-day to each subscriber, together with the previous ayat of the same surah
-for review (how many is up to each person: 0 to 20, default 10). Each person
-picks the days and the time they want, and can take a break whenever they
-need to.
+A Telegram bot that walks people through the Quran one ayah a day — to
+memorize it, or to reflect on its tafsir. It sends one ayah a day to each
+subscriber, together with the previous ayat of the same surah for review (how
+many is up to each person: 0 to 20, default 10). The position advances only when
+the person marks the ayah **done** (the "أتممتُها — التالية" button, or `/next`),
+so the same ayah repeats until then and no missed day skips an ayah; `/next`
+lets a faster learner go several in one sitting. Each person picks the days and
+the time they want, and can take a break whenever they need to.
 
 The bot text is in Arabic. The code and docs are in English so any
 developer can work on it.
@@ -17,15 +20,20 @@ developer can work on it.
   teachers use with children because the short surahs come first.
 - A subscriber has a position in the track. Each day they receive the ayah
   at their position, plus a review of the previous ayat in that surah (10 by
-  default, set with `/review`, 0 to 20). Then their position moves forward by
-  one. On long surahs the review is split across several messages so it never
-  exceeds Telegram's size limit.
+  default, set with `/review`, 0 to 20). The position moves forward by one only
+  when they mark the ayah **done** (the button under it, or `/next`); until then
+  the same ayah repeats each day (with a gentle nudge after a missed day). On
+  long surahs the review is split across several messages so it never exceeds
+  Telegram's size limit.
 - Right after the ayah, the bot can send that ayah's **recitation audio** (in a
   reciter the person chooses, or none) and its **tafseer** — both as **silent**
   messages, no second notification sound. The tafseer is on by default; with
   `/tafsir` the person chooses which one (التفسير الميسر — the default, المختصر,
-  السعدي, or ابن كثير) and how it arrives (the text inline, or a link to read it
-  in full). The audio defaults to الحصري المعلِّم (the kids teacher style) and
+  السعدي, or ابن كثير) and how it arrives (the text inline, or a link). Either
+  way every tafseer carries a one-tap "اقرأ التفسير كاملًا" link to the trusted
+  source, so when an edition's note is a cross-reference ("سبق الكلام عليها في
+  أول سورة البقرة") the full text is one tap away — we never substitute or invent
+  it. The audio defaults to الحصري المعلِّم (the kids teacher style) and
   the reciter is picked with `/reciter` (seven reciters, or off). Both are sent
   once, the day the ayah is delivered, and always match the reader's current
   settings: change the reciter and the next ayah is recited in the new voice;
@@ -97,6 +105,7 @@ refuses to write anything that does not match.
 ## Commands the user sees (Arabic)
 
 - `/today` read today's ayah now (counts as today's, so it is not sent again)
+- `/next` mark the current ayah done and show the next (go faster, or catch up)
 - `/surah` pick the surah (and ayah) you start from
 - `/order` pick the order: from An-Nas (hifz) or from Al-Fatihah (Mushaf)
 - `/time HH:MM` set the daily send time

@@ -19,7 +19,40 @@ describe('formatTafseerMessages — inline edition, text format', () => {
     expect(msgs).toHaveLength(1);
     expect(msgs[0].text).toContain('التفسير الميسر');
     expect(msgs[0].text).toContain('الثناء على الله');
-    expect(msgs[0].readMoreUrl).toBeUndefined(); // inline text needs no link
+    expect(msgs[0].readMoreUrl).toBeUndefined(); // no link supplied -> no button
+  });
+
+  it('carries the "read in full" link when one is supplied (so a cross-reference is followable)', () => {
+    const link = 'https://quranenc.com/ar/browse/arabic_moyassar/3/1';
+    const msgs = formatTafseerMessages({
+      numberInSurah: 1,
+      editionLabel: 'التفسير الميسر',
+      kind: 'inline',
+      format: 'text',
+      // A cross-reference stub kept verbatim from the source — the reader taps to
+      // read the full text on the trusted site; we never substitute text.
+      text: 'سبق الكلام عليها في أول سورة البقرة.',
+      link,
+    });
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0].text).toContain('سبق الكلام عليها');
+    expect(msgs[0].readMoreUrl).toBe(link);
+  });
+
+  it('puts the link only on the LAST message when a long tafseer is split', () => {
+    const long = 'كلمة '.repeat(SAFE_LIMIT).trim();
+    const link = 'https://quranenc.com/ar/browse/arabic_moyassar/2/255';
+    const msgs = formatTafseerMessages({
+      numberInSurah: 255,
+      editionLabel: 'التفسير الميسر',
+      kind: 'inline',
+      format: 'text',
+      text: long,
+      link,
+    });
+    expect(msgs.length).toBeGreaterThan(1);
+    expect(msgs[0].readMoreUrl).toBeUndefined();
+    expect(msgs[msgs.length - 1].readMoreUrl).toBe(link);
   });
 
   it('names the ayah number with the ornamented marker and the edition in the header', () => {

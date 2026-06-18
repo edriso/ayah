@@ -1,5 +1,11 @@
 import { Bot, InlineKeyboard, type Context } from 'grammy';
-import { activeDaysList, clampReviewCount, MAX_REVIEW_COUNT, toAsciiDigits } from './core';
+import {
+  activeDaysList,
+  clampReviewCount,
+  MAX_REVIEW_COUNT,
+  toAsciiDigits,
+  advancePosition,
+} from './core';
 import {
   ensureSubscriber,
   toggleActiveDay,
@@ -15,8 +21,14 @@ import {
   setStartPosition,
   setOrder,
   commitDelivery,
+  confirmRead,
+  getLatestUnconfirmedDelivery,
+  resolveTargetEntry,
   getEntryForAyah,
   getEntryAtPosition,
+  getEntryById,
+  countTrackEntries,
+  getTrackById,
   getProgressView,
   countDeliveries,
   getTrackByKey,
@@ -46,6 +58,10 @@ import {
   tafseerMessagesFor,
   tafseerReplyMarkup,
   sampleEntryFor,
+  sendConfirmPrompt,
+  sendMissedDaysNudge,
+  sendAyahNow,
+  READ_CONFIRM,
   type TodayView,
 } from './lib/deliver';
 import {
@@ -295,66 +311,62 @@ function isAdmin(ctx: Context): boolean {
  * shown, so a failed reply leaves the day unclaimed; the unique (subscriber,
  * date) index makes it safe even if the scheduler races (see scheduler.ts).
  */
-async function sendTodayView(
+export async function sendTodayView(
   ctx: Context,
   sub: Subscriber,
   view: TodayView,
   now: Date,
 ): Promise<void> {
+  // Lead with a gentle "days since last review" nudge + an encouragement ayah
+  // when the ayah has been repeating unconfirmed (silent, best effort).
+  await sendMissedDaysNudge(bot, sub.telegramId, sub.id, sub.timezone, now);
+
   for (const message of view.messages) await ctx.reply(message);
-  if (view.claim) {
+
+  // Record today's delivery (no advance — the position moves on a confirmed
+  // done). Only on a free day (view.record). 'duplicate' = the scheduler beat
+  // us to it; then we send no tafseer/audio (each arrives once, with the day).
+  let recorded = false;
+  if (view.record) {
     const committed = await commitDelivery({
       subscriberId: sub.id,
-      entry: view.claim.entry,
-      scheduledFor: view.claim.scheduledFor,
-      totalEntries: view.claim.totalEntries,
-      loops: view.claim.loops,
+      entry: view.record.entry,
+      scheduledFor: view.record.scheduledFor,
       startedAt: sub.startedAt,
       now,
     });
-    // Send the tafseer and celebrate only on a real advance. If commitDelivery
-    // returned 'duplicate' (the scheduler raced in and delivered the same day
-    // first) the position did NOT advance here, so re-sending the tafseer or a
-    // milestone would be a spurious duplicate. view.tafseer is itself non-empty
-    // only when this view carried a claim, so a re-show or peek sends nothing.
-    if (committed === 'sent') {
-      // In reading order, both SILENT (no notification sound): the recitation
-      // audio first, then the tafseer. Audio is best-effort inside
-      // deliverAyahAudio.
-      await deliverAyahAudio(bot, sub.telegramId, view.claim.entry, sub.reciter);
-      // The tafseer follows SILENTLY. Wrapped so a hiccup never aborts the
-      // milestone or the reply flow.
-      try {
-        for (const message of view.tafseer) {
-          await ctx.reply(message.text, {
-            disable_notification: true,
-            reply_markup: tafseerReplyMarkup(message),
-          });
-        }
-      } catch (err) {
-        logger.warn('Failed to send tafseer for /today', {
-          subscriberId: sub.id,
-          error: String(err),
+    recorded = committed === 'sent';
+  }
+  if (recorded && view.record) {
+    // In reading order, both SILENT: the recitation, then the tafseer.
+    await deliverAyahAudio(bot, sub.telegramId, view.record.entry, sub.reciter);
+    try {
+      for (const message of view.tafseer) {
+        await ctx.reply(message.text, {
+          disable_notification: true,
+          reply_markup: tafseerReplyMarkup(message),
         });
       }
-      const completion = await buildCompletionMessage(
-        view.claim.entry,
-        view.claim.totalEntries,
-        view.claim.loops,
-        sub.id,
-      );
-      if (completion) await ctx.reply(completion.text, { reply_markup: completion.keyboard });
+    } catch (err) {
+      logger.warn('Failed to send tafseer for /today', {
+        subscriberId: sub.id,
+        error: String(err),
+      });
     }
   }
+
+  // The "أتممتُها — التالية" button rides every shown ayah so the reader can
+  // mark it done and advance — unless paused (a resting reader is not nudged on).
+  if (!sub.pausedAt && view.messages.length > 0) await sendConfirmPrompt(bot, sub.telegramId);
 }
 
 /**
  * After the user repositions (/surah, a surah-pick button, the onboarding
- * "start from An-Nas"), auto-send the ayah at the new position (like /today) and
- * claim it as today's delivery so the scheduler does not also send it. `entry`
- * is the NEW entry the position was set to (carrying its track and id). On an
- * already-delivered / off / paused day the ayah is shown as a preview and the
- * day's record is left untouched (buildTodayView decides).
+ * "start from An-Nas"), set the position to the chosen ayah and show it (like
+ * /today). Read-gated: this is a jump, not an advance — `entry` is the NEW entry
+ * the position was set to; confirming (or /next) is what moves on. On a free day
+ * the show is recorded as today's delivery so the scheduler does not also send it
+ * (without advancing); otherwise it is a preview (buildTodayView decides).
  */
 export async function sendAfterReposition(
   ctx: Context,
@@ -362,11 +374,8 @@ export async function sendAfterReposition(
   entry: EntryWithAyah,
 ): Promise<void> {
   const now = new Date();
-  const view = await buildTodayView(
-    { ...sub, trackId: entry.trackId, currentEntryId: entry.id },
-    now,
-    { reposition: true },
-  );
+  const repositioned = { ...sub, trackId: entry.trackId, currentEntryId: entry.id };
+  const view = await buildTodayView(repositioned, now);
   if (view.messages.length === 0) {
     logger.warn('reposition produced no ayah', { subscriberId: sub.id, entryId: entry.id });
     await ctx.reply(COPY.brokenOrNotStarted);
@@ -374,15 +383,12 @@ export async function sendAfterReposition(
   }
   const { nameAr } = entry.ayah.surah;
   const { numberInSurah } = entry.ayah;
-  // When today is still free the new ayah counts as today's delivery and the
-  // position has advanced past it; otherwise it is shown as a preview that will
-  // arrive at the next scheduled time.
   await ctx.reply(
-    view.claim
+    view.record
       ? COPY.repositionClaimed(nameAr, numberInSurah)
       : COPY.repositionPreview(nameAr, numberInSurah),
   );
-  await sendTodayView(ctx, sub, view, now);
+  await sendTodayView(ctx, repositioned, view, now);
   if (sub.pausedAt) await ctx.reply(COPY.pausedHint);
 }
 
@@ -484,6 +490,60 @@ bot.command('today', async (ctx) => {
   await sendTodayView(ctx, sub, view, now);
   // Remind a paused user of their state, since /today works while paused.
   if (sub.pausedAt) await ctx.reply(COPY.pausedHint);
+});
+
+/**
+ * Mark the current ayah done and show the NEXT one now — for a reader who has
+ * memorized (or finished reading the tafsir of) today's ayah and wants to go on,
+ * or to catch up. Repeatable. Exported for testing; /next is a thin wrapper.
+ */
+export async function advanceAndShowNext(ctx: Context, sub: Subscriber, now: Date): Promise<void> {
+  const current = await resolveTargetEntry(sub);
+  if (!current) {
+    await ctx.reply(COPY.brokenOrNotStarted);
+    return;
+  }
+  // Not started yet: begin at the first ayah (no advance, no skip).
+  if (sub.currentEntryId === null) {
+    await setStartPosition(sub.id, current.id);
+    await sendAyahNow(bot, sub, current);
+    return;
+  }
+  const [totalEntries, track] = await Promise.all([
+    countTrackEntries(sub.trackId),
+    getTrackById(sub.trackId),
+  ]);
+  const loops = track?.loops ?? false;
+  const result = await confirmRead({
+    subscriberId: sub.id,
+    entry: current,
+    totalEntries,
+    loops,
+    now,
+  });
+  // If the ayah just confirmed finished a surah, celebrate the milestone first.
+  if (result === 'advanced') {
+    const completion = await buildCompletionMessage(current, totalEntries, loops, sub.id);
+    if (completion) await ctx.reply(completion.text, { reply_markup: completion.keyboard });
+  }
+  // Then show the next ayah from the new position.
+  const nextPosition = advancePosition(current.position, totalEntries, loops);
+  const nextEntry =
+    nextPosition === null ? null : await getEntryAtPosition(current.trackId, nextPosition);
+  if (!nextEntry) {
+    await ctx.reply(COPY.trackFinished);
+    return;
+  }
+  await sendAyahNow(bot, sub, nextEntry);
+}
+
+// /next: mark the current ayah done and show the next now (go faster / catch
+// up). Each /next advances exactly one ayah; the daily "أتممتُها" button does
+// the same, one tap at a time.
+bot.command('next', async (ctx) => {
+  const sub = await subscriberFor(ctx);
+  if (!sub) return;
+  await advanceAndShowNext(ctx, sub, new Date());
 });
 
 // /review N: set how many previous ayat to include for review (0..20).
@@ -839,6 +899,57 @@ bot.callbackQuery(new RegExp(`^${COMPLETE_RESTART_PREFIX}(\\d+)$`), async (ctx) 
   await ctx.answerCallbackQuery();
 });
 
+// ─── "أتممتُها — التالية" (mark done) button ─────────────────────────
+//
+// Advances one ayah and marks the day(s) done. Idempotent: it works off the
+// latest unconfirmed delivery and confirmRead's compare-and-set, so a double
+// tap or a stale button from an earlier day is a harmless no-op. The tapped
+// button is removed in place (Telegram best practice). If the confirmed ayah
+// finished a surah, the milestone follows.
+export async function handleDone(ctx: Context, sub: Subscriber): Promise<void> {
+  const latest = await getLatestUnconfirmedDelivery(sub.id);
+  if (!latest) {
+    await ctx.editMessageReplyMarkup().catch(ignoreNotModified);
+    await ctx.answerCallbackQuery({ text: COPY.alreadyDone });
+    return;
+  }
+  const entry = await getEntryById(latest.trackEntryId);
+  if (!entry) {
+    await ctx.answerCallbackQuery();
+    return;
+  }
+  const [totalEntries, track] = await Promise.all([
+    countTrackEntries(sub.trackId),
+    getTrackById(sub.trackId),
+  ]);
+  const loops = track?.loops ?? false;
+  const result = await confirmRead({
+    subscriberId: sub.id,
+    entry,
+    totalEntries,
+    loops,
+    now: new Date(),
+  });
+  await ctx.editMessageReplyMarkup().catch(ignoreNotModified); // drop the button either way
+  if (result === 'advanced') {
+    await ctx.answerCallbackQuery();
+    await ctx.reply(COPY.doneConfirmed);
+    const completion = await buildCompletionMessage(entry, totalEntries, loops, sub.id);
+    if (completion) await ctx.reply(completion.text, { reply_markup: completion.keyboard });
+  } else {
+    await ctx.answerCallbackQuery({ text: COPY.alreadyDone });
+  }
+}
+
+bot.callbackQuery(READ_CONFIRM, async (ctx) => {
+  const sub = await subscriberFor(ctx);
+  if (!sub) {
+    await ctx.answerCallbackQuery();
+    return;
+  }
+  await handleDone(ctx, sub);
+});
+
 // ─── Settings pause/resume toggle ───────────────────────────────────
 
 bot.callbackQuery(PAUSE_TOGGLE, async (ctx) => {
@@ -1103,6 +1214,7 @@ async function setBotProfile() {
   // cover the rest, matching the "fewer commands" goal.
   await bot.api.setMyCommands([
     { command: 'today', description: 'عرض آية اليوم' },
+    { command: 'next', description: 'إتمام الآية والانتقال إلى التالية' },
     { command: 'surah', description: 'اختيار سورة البداية' },
     { command: 'order', description: 'اختيار الترتيب (المصحف أو الحفظ)' },
     { command: 'time', description: 'ضبط وقت الإرسال' },

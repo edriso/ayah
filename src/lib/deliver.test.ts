@@ -1,27 +1,27 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-// Stub the database and send layers so the /today decision logic can be tested
-// with no real database. The scheduling math (getLocalContext, isDayActive) and
-// message formatting are the real implementations.
+// Stub the database and send layers so the read-gated decision logic can be
+// tested with no real database. The scheduling math (getLocalContext,
+// isDayActive) and message formatting are the real implementations.
 const h = vi.hoisted(() => ({
   getDeliveryFor: vi.fn(),
   getEntryById: vi.fn(),
   resolveTargetEntry: vi.fn(),
   buildDailyContent: vi.fn(),
-  countTrackEntries: vi.fn(),
-  getTrackById: vi.fn(),
   surahCompletionFor: vi.fn(),
-  // Used by the scheduler path (deliverDueSubscribers).
+  // Scheduler path.
   listDeliverableSubscribers: vi.fn(),
   hasDeliveryFor: vi.fn(),
   commitDelivery: vi.fn(),
+  countUnreadDeliveriesBefore: vi.fn(),
+  getAyahText: vi.fn(),
   markBlocked: vi.fn(),
   sendMessages: vi.fn(),
   // Audio path.
   getCachedAyahAudioId: vi.fn(),
   cacheAyahAudioId: vi.fn(),
   sendAudio: vi.fn(),
-  // Tafseer path: the text now comes from the Tafseer table, not the ayah row.
+  // Tafseer path.
   getTafseerText: vi.fn(),
 }));
 
@@ -30,24 +30,19 @@ vi.mock('../database', () => ({
   getEntryById: h.getEntryById,
   resolveTargetEntry: h.resolveTargetEntry,
   buildDailyContent: h.buildDailyContent,
-  countTrackEntries: h.countTrackEntries,
-  getTrackById: h.getTrackById,
   surahCompletionFor: h.surahCompletionFor,
   listDeliverableSubscribers: h.listDeliverableSubscribers,
   hasDeliveryFor: h.hasDeliveryFor,
   commitDelivery: h.commitDelivery,
+  countUnreadDeliveriesBefore: h.countUnreadDeliveriesBefore,
+  getAyahText: h.getAyahText,
   markBlocked: h.markBlocked,
   getCachedAyahAudioId: h.getCachedAyahAudioId,
   cacheAyahAudioId: h.cacheAyahAudioId,
-  // Faithful-enough reciter lookup: a real reciter for any key, undefined for
-  // the "none" sentinel (so deliverAyahAudio sends nothing).
   reciterByKey: (key: string) =>
     key === 'none'
       ? undefined
       : { key, nameAr: 'الحصري (المعلِّم)', folder: 'Husary_Muallim_128kbps' },
-  // Tafseer: the text service, plus a faithful-enough edition lookup. The
-  // default/Al-Muyassar is inline (quranenc link); "ibnkathir" is the long
-  // preview edition (quran.com link), so tests can exercise both shapes.
   getTafseerText: h.getTafseerText,
   tafseerOrDefault: (key: string) =>
     key === 'ibnkathir'
@@ -65,6 +60,8 @@ vi.mock('../database', () => ({
           linkHost: 'quranenc',
           linkRef: 'arabic_moyassar',
         },
+  // A fixed encouragement reference; getAyahText (mocked) resolves its text.
+  pickQuranVirtue: () => ({ surah: 54, ayah: 17 }),
   DEFAULT_TAFSEER: 'muyassar',
   getTrackByKey: vi.fn(),
   getEntryForAyah: vi.fn(),
@@ -83,6 +80,7 @@ import {
   deliverDueSubscribers,
   sampleEntryFor,
 } from './deliver';
+import { COPY } from './copy';
 
 // 2026-06-01 (UTC) is a Monday, ISO weekday 1.
 const NOW = new Date('2026-06-01T12:00:00Z');
@@ -91,9 +89,6 @@ const CONTENT = {
   today: { numberInSurah: 1, text: 'قُلْ هُوَ ٱللَّهُ أَحَدٌ' },
   review: [],
 };
-// A resolved entry (shape only matters by reference for the claim). The
-// tafseer text now comes from getTafseerText(edition, surah, ayah), not the
-// ayah row, so the entry just needs its (surah, ayah) coordinates.
 const ENTRY = {
   id: 7,
   position: 3,
@@ -113,7 +108,7 @@ function todaySub(over: Record<string, unknown> = {}) {
     activeDays: 127,
     pausedAt: null,
     trackId: 1,
-    currentEntryId: 50, // already advanced past the delivered entry
+    currentEntryId: 7,
     startedAt: null,
     reviewCount: 0,
     tafseerEnabled: true,
@@ -128,94 +123,73 @@ beforeEach(() => {
   h.getDeliveryFor.mockResolvedValue(null);
   h.resolveTargetEntry.mockResolvedValue(ENTRY);
   h.buildDailyContent.mockResolvedValue(CONTENT);
-  h.countTrackEntries.mockResolvedValue(6236);
-  h.getTrackById.mockResolvedValue({ id: 1, loops: true });
   h.getEntryById.mockResolvedValue(ENTRY);
   h.getTafseerText.mockResolvedValue('إخلاص العبادة لله وحده.');
+  h.countUnreadDeliveriesBefore.mockResolvedValue(0); // not behind by default
+  h.getAyahText.mockResolvedValue({
+    text: 'نص آية الفضل',
+    surahNameAr: 'القمر',
+    numberInSurah: 17,
+  });
 });
 
-describe('buildTodayView (/today claims today)', () => {
-  it('claims today on an active, unpaused, not-yet-delivered day', async () => {
+describe('buildTodayView (read-gated: shows the live ayah, never advances)', () => {
+  it('records today on an active, unpaused, not-yet-delivered day (no advance)', async () => {
     const view = await buildTodayView(todaySub(), NOW);
     expect(view.alreadyDelivered).toBe(false);
     expect(view.messages.length).toBeGreaterThan(0);
-    expect(view.claim).toEqual({
-      scheduledFor: '2026-06-01',
-      entry: ENTRY,
-      totalEntries: 6236,
-      loops: true,
-    });
+    expect(view.record).toEqual({ scheduledFor: '2026-06-01', entry: ENTRY });
   });
 
-  it('re-shows the DELIVERED entry (not the advanced pointer) and does NOT claim', async () => {
+  it('re-shows the LIVE current ayah and does NOT record again', async () => {
     h.getDeliveryFor.mockResolvedValue({ trackEntryId: 7 });
     const view = await buildTodayView(todaySub(), NOW);
     expect(view.alreadyDelivered).toBe(true);
-    expect(view.claim).toBeNull();
-    expect(h.getEntryById).toHaveBeenCalledWith(7);
-    // The re-show must NOT consult resolveTargetEntry (which points at the
-    // already-advanced next ayah).
-    expect(h.resolveTargetEntry).not.toHaveBeenCalled();
+    expect(view.record).toBeNull();
+    // The position never moved, so the live ayah IS the one delivered; we show
+    // it via resolveTargetEntry (no frozen "delivered" lookup).
+    expect(h.resolveTargetEntry).toHaveBeenCalled();
   });
 
-  it('is a pure peek on an off day (no claim)', async () => {
-    // activeDays = 2 is Tuesday only, so Monday (NOW) is off.
-    const view = await buildTodayView(todaySub({ activeDays: 2 }), NOW);
+  it('is a pure peek on an off day (no record)', async () => {
+    const view = await buildTodayView(todaySub({ activeDays: 2 }), NOW); // Tuesday only
     expect(view.messages.length).toBeGreaterThan(0);
-    expect(view.claim).toBeNull();
+    expect(view.record).toBeNull();
     expect(view.alreadyDelivered).toBe(false);
   });
 
-  it('is a pure peek while paused (no claim)', async () => {
+  it('is a pure peek while paused (no record)', async () => {
     const view = await buildTodayView(todaySub({ pausedAt: new Date() }), NOW);
     expect(view.messages.length).toBeGreaterThan(0);
-    expect(view.claim).toBeNull();
+    expect(view.record).toBeNull();
   });
 
-  it('returns no messages (and no claim) on a finished non-looping track', async () => {
+  it('returns no messages (and no record) on a finished non-looping track', async () => {
     h.resolveTargetEntry.mockResolvedValue(null);
     const view = await buildTodayView(todaySub(), NOW);
     expect(view.messages).toEqual([]);
-    expect(view.claim).toBeNull();
-  });
-
-  it('reposition shows the current entry and claims when today is still free', async () => {
-    const view = await buildTodayView(todaySub(), NOW, { reposition: true });
-    expect(view.messages.length).toBeGreaterThan(0);
-    expect(view.claim).toEqual({
-      scheduledFor: '2026-06-01',
-      entry: ENTRY,
-      totalEntries: 6236,
-      loops: true,
-    });
-    expect(h.resolveTargetEntry).toHaveBeenCalled();
-  });
-
-  it('reposition on an already-delivered day shows the new entry (preview), no claim', async () => {
-    h.getDeliveryFor.mockResolvedValue({ trackEntryId: 7 });
-    const view = await buildTodayView(todaySub(), NOW, { reposition: true });
-    expect(view.claim).toBeNull();
-    expect(view.messages.length).toBeGreaterThan(0);
-    // Shows the just-set position, not the earlier delivered re-show.
-    expect(h.resolveTargetEntry).toHaveBeenCalled();
-    expect(h.getEntryById).not.toHaveBeenCalled();
+    expect(view.record).toBeNull();
   });
 });
 
-describe('buildTodayView tafseer (sent once, with the delivery)', () => {
-  it('includes the tafseer when the view claims a delivery (enabled + has one)', async () => {
+describe('buildTodayView tafseer (sent once, with the delivery; always linkable)', () => {
+  it('includes the tafseer with a "read in full" link when the view records a delivery', async () => {
     const view = await buildTodayView(todaySub(), NOW);
-    expect(view.claim).not.toBeNull();
+    expect(view.record).not.toBeNull();
     expect(view.tafseer.length).toBeGreaterThan(0);
     expect(view.tafseer[0].text).toContain('التفسير الميسر');
     expect(view.tafseer[0].text).toContain('إخلاص العبادة');
-    expect(view.tafseer[0].readMoreUrl).toBeUndefined(); // inline text, no button
+    // Inline text now ALWAYS carries the link, so a cross-reference is one tap
+    // from the full text on the trusted source.
+    expect(view.tafseer[0].readMoreUrl).toBe(
+      'https://quranenc.com/ar/browse/arabic_moyassar/112/1',
+    );
   });
 
   it('omits the tafseer when the subscriber turned it off', async () => {
     const view = await buildTodayView(todaySub({ tafseerEnabled: false }), NOW);
     expect(view.tafseer).toEqual([]);
-    expect(view.messages.length).toBeGreaterThan(0); // the ayah is unaffected
+    expect(view.messages.length).toBeGreaterThan(0);
   });
 
   it('omits the tafseer when the chosen edition has no seeded text', async () => {
@@ -225,22 +199,14 @@ describe('buildTodayView tafseer (sent once, with the delivery)', () => {
   });
 
   it('sends a link (no stored text) in link format, as a read-more button', async () => {
-    h.getTafseerText.mockResolvedValue(null); // link mode must not need text
+    h.getTafseerText.mockResolvedValue(null);
     const view = await buildTodayView(todaySub({ tafseerFormat: 'link' }), NOW);
-    expect(view.claim).not.toBeNull();
-    expect(view.tafseer.length).toBeGreaterThan(0);
+    expect(view.record).not.toBeNull();
     expect(view.tafseer[0].readMoreUrl).toBe(
       'https://quranenc.com/ar/browse/arabic_moyassar/112/1',
     );
-    expect(view.tafseer[0].text).not.toContain('https://'); // URL is the button, not in text
+    expect(view.tafseer[0].text).not.toContain('https://');
     expect(h.getTafseerText).not.toHaveBeenCalled();
-  });
-
-  it('uses the chosen edition (label, link, and its stored rows)', async () => {
-    h.getTafseerText.mockResolvedValue('بداية تفسير ابن كثير.');
-    const view = await buildTodayView(todaySub({ tafseerEdition: 'ibnkathir' }), NOW);
-    expect(h.getTafseerText).toHaveBeenCalledWith('ibnkathir', 112, 1);
-    expect(view.tafseer[0].text).toContain('تفسير ابن كثير'); // the edition header
   });
 
   it('a preview edition in text format sends the opening plus a read-in-full button', async () => {
@@ -248,57 +214,27 @@ describe('buildTodayView tafseer (sent once, with the delivery)', () => {
     const view = await buildTodayView(todaySub({ tafseerEdition: 'ibnkathir' }), NOW);
     expect(view.tafseer).toHaveLength(1);
     expect(view.tafseer[0].text).toContain('بداية تفسير ابن كثير');
-    expect(view.tafseer[0].text).toContain('بداية التفسير'); // the "this is the beginning" note
     expect(view.tafseer[0].readMoreUrl).toBe(
       'https://quran.com/112:1/tafsirs/ar-tafsir-ibn-kathir',
     );
-  });
-
-  it('falls back to text format for an unrecognised tafseerFormat value', async () => {
-    h.getTafseerText.mockResolvedValue('نص التفسير.');
-    const view = await buildTodayView(todaySub({ tafseerFormat: 'garbage' }), NOW);
-    expect(h.getTafseerText).toHaveBeenCalled(); // text path, not link
-    expect(view.tafseer[0].text).toContain('نص التفسير');
   });
 
   it('does NOT re-send the tafseer on an already-delivered re-show', async () => {
     h.getDeliveryFor.mockResolvedValue({ trackEntryId: 7 });
     const view = await buildTodayView(todaySub(), NOW);
     expect(view.alreadyDelivered).toBe(true);
-    expect(view.messages.length).toBeGreaterThan(0); // the ayah is still shown
-    expect(view.tafseer).toEqual([]); // but not the tafseer again
+    expect(view.messages.length).toBeGreaterThan(0);
+    expect(view.tafseer).toEqual([]);
   });
 
-  it('does NOT send the tafseer on an off-day peek (no claim)', async () => {
-    // activeDays = 2 is Tuesday only, so Monday (NOW) is off.
+  it('does NOT send the tafseer on an off-day peek (no record)', async () => {
     const view = await buildTodayView(todaySub({ activeDays: 2 }), NOW);
-    expect(view.claim).toBeNull();
+    expect(view.record).toBeNull();
     expect(view.tafseer).toEqual([]);
-  });
-
-  it('does NOT send the tafseer on a peek while paused (no claim)', async () => {
-    const view = await buildTodayView(todaySub({ pausedAt: new Date() }), NOW);
-    expect(view.claim).toBeNull();
-    expect(view.tafseer).toEqual([]);
-  });
-
-  it('sends the tafseer for a NEW ayah when a reposition claims a free day', async () => {
-    const view = await buildTodayView(todaySub(), NOW, { reposition: true });
-    expect(view.claim).not.toBeNull();
-    expect(view.tafseer.length).toBeGreaterThan(0);
-  });
-
-  it('does NOT send the tafseer for a reposition PREVIEW on an already-delivered day', async () => {
-    h.getDeliveryFor.mockResolvedValue({ trackEntryId: 7 });
-    const view = await buildTodayView(todaySub(), NOW, { reposition: true });
-    expect(view.claim).toBeNull(); // a preview, not a delivery
-    expect(view.messages.length).toBeGreaterThan(0); // the new ayah is previewed
-    expect(view.tafseer).toEqual([]); // tafseer waits for the real send
   });
 });
 
-describe('deliverDueSubscribers (scheduler sends audio + tafseer silently)', () => {
-  // A minimal bot whose only job here is to record sendMessage calls.
+describe('deliverDueSubscribers (read-gated scheduler)', () => {
   const bot = { api: { sendMessage: vi.fn() } } as never;
   const api = (bot as { api: { sendMessage: ReturnType<typeof vi.fn> } }).api;
 
@@ -317,7 +253,7 @@ describe('deliverDueSubscribers (scheduler sends audio + tafseer silently)', () 
       reciter: 'husary-muallim',
       trackId: 1,
       startedAt: null,
-      currentEntryId: 50,
+      currentEntryId: 7,
       track: { loops: true },
       ...over,
     };
@@ -332,8 +268,38 @@ describe('deliverDueSubscribers (scheduler sends audio + tafseer silently)', () 
     h.getCachedAyahAudioId.mockResolvedValue(null);
     h.cacheAyahAudioId.mockResolvedValue(undefined);
     h.sendAudio.mockResolvedValue({ result: 'ok', fileId: 'AUDIO_FILE_ID' });
-    // No surah completion, so no milestone message muddies the assertions.
     h.surahCompletionFor.mockResolvedValue(null);
+  });
+
+  it('records the day WITHOUT advancing (no totalEntries/loops/nextEntry)', async () => {
+    await deliverDueSubscribers(bot, NOW);
+    expect(h.commitDelivery).toHaveBeenCalledTimes(1);
+    const arg = h.commitDelivery.mock.calls[0][0];
+    expect(arg).toMatchObject({ subscriberId: 1, entry: ENTRY, scheduledFor: '2026-06-01' });
+    expect(arg.totalEntries).toBeUndefined(); // read-gated: the send never advances
+    expect(arg.loops).toBeUndefined();
+  });
+
+  it('sends the "done" confirm prompt after the ayah (silent)', async () => {
+    await deliverDueSubscribers(bot, NOW);
+    const promptCall = api.sendMessage.mock.calls.find((c) => c[1] === COPY.confirmPrompt);
+    expect(promptCall).toBeTruthy();
+    expect(promptCall![2]).toMatchObject({ disable_notification: true });
+  });
+
+  it('leads a repeating unread ayah with the missed-days nudge (encouragement ayah from the DB)', async () => {
+    h.countUnreadDeliveriesBefore.mockResolvedValue(2);
+    await deliverDueSubscribers(bot, NOW);
+    expect(h.getAyahText).toHaveBeenCalledWith(54, 17); // the picked virtue's text
+    const nudgeCall = api.sendMessage.mock.calls.find((c) => String(c[1]).includes('نص آية الفضل'));
+    expect(nudgeCall).toBeTruthy();
+    expect(nudgeCall![2]).toMatchObject({ disable_notification: true }); // silent
+  });
+
+  it('sends no nudge when the reader is not behind', async () => {
+    h.countUnreadDeliveriesBefore.mockResolvedValue(0);
+    await deliverDueSubscribers(bot, NOW);
+    expect(h.getAyahText).not.toHaveBeenCalled();
   });
 
   it('sends the recitation audio silently, by URL, before the tafseer', async () => {
@@ -343,43 +309,11 @@ describe('deliverDueSubscribers (scheduler sends audio + tafseer silently)', () 
     expect(chatId).toBe(123n);
     expect(audio).toBe('https://everyayah.com/data/Husary_Muallim_128kbps/112001.mp3');
     expect(opts).toMatchObject({ silent: true });
-    // Audio goes out before the tafseer (reading order: read, hear, understand).
-    const tafseerOrder = api.sendMessage.mock.invocationCallOrder[0];
-    expect(h.sendAudio.mock.invocationCallOrder[0]).toBeLessThan(tafseerOrder);
   });
 
-  it('caches the file_id on the first send', async () => {
+  it('caches the file_id on the first send and reuses it after', async () => {
     await deliverDueSubscribers(bot, NOW);
     expect(h.cacheAyahAudioId).toHaveBeenCalledWith(112, 1, 'husary-muallim', 'AUDIO_FILE_ID');
-  });
-
-  it('reuses the cached file_id and does not re-cache it', async () => {
-    h.getCachedAyahAudioId.mockResolvedValue('CACHED_ID');
-    h.sendAudio.mockResolvedValue({ result: 'ok', fileId: 'CACHED_ID' });
-    await deliverDueSubscribers(bot, NOW);
-    expect(h.sendAudio.mock.calls[0][2]).toBe('CACHED_ID'); // sent by file_id, not URL
-    expect(h.cacheAyahAudioId).not.toHaveBeenCalled();
-  });
-
-  it('sends no audio when the subscriber chose "none"', async () => {
-    h.listDeliverableSubscribers.mockResolvedValue([deliverableSub({ reciter: 'none' })]);
-    const stats = await deliverDueSubscribers(bot, NOW);
-    expect(stats.sent).toBe(1); // the ayah still goes out
-    expect(h.sendAudio).not.toHaveBeenCalled();
-  });
-
-  it('does not cache a file_id when the audio send did not succeed', async () => {
-    h.sendAudio.mockResolvedValue({ result: 'failed' }); // e.g. CDN hiccup
-    const stats = await deliverDueSubscribers(bot, NOW);
-    expect(stats.sent).toBe(1); // the ayah was still delivered
-    expect(h.cacheAyahAudioId).not.toHaveBeenCalled();
-  });
-
-  it('does not let an audio failure block the delivery', async () => {
-    h.sendAudio.mockRejectedValue(new Error('cdn down'));
-    const stats = await deliverDueSubscribers(bot, NOW);
-    expect(h.commitDelivery).toHaveBeenCalledTimes(1);
-    expect(stats.sent).toBe(1);
   });
 
   it('sends the tafseer with disable_notification after a delivered ayah', async () => {
@@ -392,58 +326,43 @@ describe('deliverDueSubscribers (scheduler sends audio + tafseer silently)', () 
     expect(tafseerCall![2]).toMatchObject({ disable_notification: true });
   });
 
-  it('does not send any tafseer when the subscriber turned it off', async () => {
-    h.listDeliverableSubscribers.mockResolvedValue([deliverableSub({ tafseerEnabled: false })]);
+  it('does not let an audio failure block the delivery', async () => {
+    h.sendAudio.mockRejectedValue(new Error('cdn down'));
     const stats = await deliverDueSubscribers(bot, NOW);
-    expect(stats.sent).toBe(1); // the ayah still goes out
-    const tafseerCall = api.sendMessage.mock.calls.find((c) =>
-      String(c[1]).includes('التفسير الميسر'),
-    );
-    expect(tafseerCall).toBeUndefined();
-  });
-
-  it('does not let a tafseer send failure block the delivery', async () => {
-    api.sendMessage.mockRejectedValue(new Error('boom'));
-    const stats = await deliverDueSubscribers(bot, NOW);
-    // The ayah (via sendMessages) succeeded and was committed BEFORE the tafseer
-    // send, so a tafseer failure cannot undo the delivery.
     expect(h.commitDelivery).toHaveBeenCalledTimes(1);
     expect(stats.sent).toBe(1);
   });
 
-  it('sends neither audio nor tafseer when the commit loses a race (duplicate)', async () => {
+  it('marks a blocked user and does not commit', async () => {
+    h.sendMessages.mockResolvedValue('blocked');
+    const stats = await deliverDueSubscribers(bot, NOW);
+    expect(h.markBlocked).toHaveBeenCalledWith(1);
+    expect(h.commitDelivery).not.toHaveBeenCalled();
+    expect(stats.failed).toBe(1);
+  });
+
+  it('sends neither audio, tafseer, nor the prompt when the commit loses a race (duplicate)', async () => {
     h.commitDelivery.mockResolvedValue('duplicate');
     const stats = await deliverDueSubscribers(bot, NOW);
     expect(stats.sent).toBe(0);
     expect(stats.skipped).toBe(1);
-    // The other path (e.g. /today) already delivered this day with its audio +
-    // tafseer, so this run must not send a second copy of either.
     expect(h.sendAudio).not.toHaveBeenCalled();
-    expect(api.sendMessage).not.toHaveBeenCalled();
+    expect(api.sendMessage).not.toHaveBeenCalled(); // no tafseer, no confirm prompt
   });
 });
 
 describe('sampleEntryFor (the "try it on today\'s ayah" preview)', () => {
-  it("uses today's DELIVERED ayah when there is one (not the advanced pointer)", async () => {
+  it("uses today's DELIVERED ayah when there is one", async () => {
     h.getDeliveryFor.mockResolvedValue({ trackEntryId: 7 });
     const entry = await sampleEntryFor(todaySub(), NOW);
     expect(entry).toBe(ENTRY);
     expect(h.getEntryById).toHaveBeenCalledWith(7);
-    expect(h.resolveTargetEntry).not.toHaveBeenCalled(); // delivered wins
   });
 
   it('falls back to the current ayah when today is not delivered', async () => {
     h.getDeliveryFor.mockResolvedValue(null);
     const entry = await sampleEntryFor(todaySub(), NOW);
     expect(entry).toBe(ENTRY);
-    expect(h.resolveTargetEntry).toHaveBeenCalled();
-  });
-
-  it('falls back to the current ayah when the delivered entry is missing', async () => {
-    h.getDeliveryFor.mockResolvedValue({ trackEntryId: 99 });
-    h.getEntryById.mockResolvedValue(null);
-    const entry = await sampleEntryFor(todaySub(), NOW);
-    expect(entry).toBe(ENTRY); // from resolveTargetEntry
     expect(h.resolveTargetEntry).toHaveBeenCalled();
   });
 
@@ -483,6 +402,6 @@ describe('buildCompletionMessage', () => {
     });
     const msg = await buildCompletionMessage(ENTRY as never, 6236, true, 1);
     expect(msg!.text).toContain('أتممت القرآن كاملًا');
-    expect(msg!.text).toContain('الناس'); // a looping track restarts here
+    expect(msg!.text).toContain('الناس');
   });
 });

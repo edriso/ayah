@@ -98,6 +98,18 @@ export function ayatCountAr(count: number): string {
   return `${toArabicDigits(count)} آية`;
 }
 
+/**
+ * A count of days in correct Arabic number-noun agreement: "يوم واحد" (1),
+ * "يومين" (2), "N أيام" (3-10), "N يومًا" (11+). Used by the gentle
+ * "you have not finished your ayah for N days" nudge.
+ */
+export function daysCountAr(days: number): string {
+  if (days === 1) return 'يوم واحد';
+  if (days === 2) return 'يومين';
+  if (days <= 10) return `${toArabicDigits(days)} أيام`;
+  return `${toArabicDigits(days)} يومًا`;
+}
+
 /** "سورة الملك، آية ٥" (or "آية ٥ من ٣٠" when the surah's total is given):
  *  where the subscriber stands (or starts) now. */
 export function positionSummaryAr(
@@ -187,11 +199,12 @@ export const COPY = {
       'مرحبًا بعودتك إلى بوت "آية". تصلك آية واحدة كل يوم بإذن الله، مع آيات سابقة من السورة نفسها للمراجعة.',
       '',
       '👈 لرؤية آيتك الآن اضغط /today',
+      'وإذا أتممتها — حفظًا أو تدبّرًا — اضغط زر «أتممتُها — التالية» لتنتقل إلى ما بعدها. وما لم تؤكّد، تبقى آيتك بانتظارك ولا تفوتك واحدة.',
       '',
       settings,
       '',
-      'لتغيير سورة البداية: /surah',
-      'لتغيير الترتيب: /order',
+      'للانتقال إلى التالية الآن أو تدارُك يوم فائت: /next',
+      'لتغيير سورة البداية: /surah — ولتغيير الترتيب: /order',
       'لعرض كل الأوامر: /help',
     ].join('\n'),
 
@@ -200,7 +213,7 @@ export const COPY = {
   welcomeNew: [
     'السلام عليكم ورحمة الله 🌿',
     '',
-    'مرحبًا بك في بوت "آية". يساعدك على حفظ القرآن بإرسال آية واحدة كل يوم، مع آيات سابقة من السورة نفسها للمراجعة.',
+    'مرحبًا بك في بوت "آية". يصحبك مع القرآن آيةً آية — لحفظها أو لتدبّر تفسيرها — بإرسال آية واحدة كل يوم، مع آيات سابقة من السورة نفسها للمراجعة. ولا تتقدّم آيتك حتى تضغط «أتممتُها»، فلا تفوتك واحدة.',
     '',
     'من أين تحب أن تبدأ؟ يمكنك البدء بالمنهج الافتراضي (من سورة الناس)، أو اختيار سورة تبدأ بها، أو الحفظ بترتيب المصحف (من الفاتحة).',
     '',
@@ -211,10 +224,11 @@ export const COPY = {
   // Arabic description. Examples that carry extra latin (a time, a timezone,
   // an argument) are wrapped with ltr() so they do not garble.
   help: [
-    'بوت "آية" يساعدك على حفظ القرآن بإرسال آية واحدة كل يوم مع آيات سابقة للمراجعة.',
+    'بوت "آية" يصحبك مع القرآن آيةً آية — لحفظها أو لتدبّر تفسيرها — بآية واحدة كل يوم مع آيات سابقة للمراجعة.',
     '',
     'الأوامر:',
-    '/today: عرض آية اليوم الآن (تُحتسب آيتك لهذا اليوم)',
+    '/today: عرض آية اليوم الآن',
+    '/next: إتمام الآية والانتقال إلى التالية (للمضي أسرع أو تدارُك يوم فائت)',
     `/surah: اختيار سورة البداية، أو اكتب رقم السورة والآية مثل ${ltr('/surah 67 5')}`,
     '/order: اختيار الترتيب (منهج الحفظ من الناس، أو ترتيب المصحف من الفاتحة)',
     `/time: ضبط وقت الإرسال، مثل ${ltr('/time 07:00')}`,
@@ -240,14 +254,43 @@ export const COPY = {
   surahInvalid:
     'تعذّر فهم ذلك. اكتب رقم السورة من ١ إلى ١١٤، ويمكنك إضافة رقم الآية بعده.\n' +
     `مثل ${ltr('/surah 67 5')}`,
-  // After a reposition on a free day: the chosen ayah counts as today's, and
-  // the position has advanced past it (so /settings shows the NEXT ayah).
+  // After a reposition on a free day: the chosen ayah is today's, and it is
+  // recorded as today's delivery (no advance — you move on when you mark it done).
   repositionClaimed: (surahNameAr: string, numberInSurah: number) =>
-    `موضعك الآن ${positionSummaryAr(surahNameAr, numberInSurah)}، وهذه آية اليوم 🌿\nوالتالية تصلك في موعدك المحدد بإذن الله.`,
+    `موضعك الآن ${positionSummaryAr(surahNameAr, numberInSurah)}، وهذه آية اليوم 🌿`,
   // After a reposition when today is already delivered, an off day, or paused:
   // the ayah is shown as a preview and will arrive at the next scheduled time.
   repositionPreview: (surahNameAr: string, numberInSurah: number) =>
     `موضعك الآن ${positionSummaryAr(surahNameAr, numberInSurah)} ✅\nوستصلك في موعدك المحدد بإذن الله.`,
+
+  // ── Done confirmation (the "أتممتُها" button) ─────────────────────
+  // The button under each ayah, and the small silent prompt that carries it.
+  doneBtn: '✅ أتممتُها — التالية',
+  confirmPrompt:
+    'إذا أتممت آية اليوم — حفظًا أو تدبّرًا لتفسيرها — فاضغط الزر لأنتقل بك إلى التالية 🌿',
+  // After a confirmed done advances the reader. Mentions /next for going on now.
+  doneConfirmed:
+    'بارك الله فيك ✓\nانتقلتَ إلى الآية التالية، تصلك في موعدها، أو اكتب /next لقراءتها الآن 🌿',
+  // Toast when an old/already-used "done" button is tapped (the position has
+  // already moved on). Gentle: their progress is recorded, nothing is wrong.
+  alreadyDone: 'سجّلنا إتمامك ✓',
+  // Shown by /next when a non-looping track has no next ayah (the shipped tracks
+  // both loop, so in practice this is never reached).
+  trackFinished: 'بارك الله فيك، لقد أتممت ختمتك كاملة 🌿',
+  // The gentle "you have not reviewed for N days" message shown when an ayah
+  // repeats unconfirmed, followed by an ayah on the virtue of the Qur'an (text
+  // read from the database). No parse_mode, so the ayah's characters are safe.
+  missedDaysMessage: (
+    days: number,
+    ayah: { text: string; surahNameAr: string; numberInSurah: number },
+  ) =>
+    [
+      `لم تُتمّ آيتك منذ ${daysCountAr(days)} 🌿`,
+      'لا حرج، عُد متى شئت وآيتك بانتظارك من حيث توقفت.',
+      '',
+      ayah.text,
+      `[سورة ${ayah.surahNameAr} — آية ${toArabicDigits(ayah.numberInSurah)}]`,
+    ].join('\n'),
 
   // Surah-completion milestone: shown the day a subscriber finishes a surah,
   // paired with the completion keyboard. The bot auto-continues to the next
@@ -423,15 +466,15 @@ export const COPY = {
   // profile and the empty-chat start screen describe the bot on their own — no
   // manual @BotFather step. Edit them here; they go live on the next start.
   botAbout:
-    'احفظ القرآن آيةً آية 🌿 تصلك آية كل يوم مع آيات للمراجعة، في الوقت والأيام التي تختارها. اضغط Start للبدء.',
+    'آية كل يوم من القرآن 🌿 لحفظها أو تدبّر تفسيرها. لا تتقدّم حتى تُتمّها، فلا تفوتك آية. اضغط Start للبدء.',
   botDescription: [
     'السلام عليكم ورحمة الله 🌿',
-    'بوت "آية" يعينك على حفظ القرآن الكريم بخطوات صغيرة ثابتة:',
-    '• تصلك كل يوم آية جديدة للحفظ، ومعها آيات سابقة من نفس السورة للمراجعة.',
-    '• ويمكن أن تصلك تلاوة الآية صوتيًا (تختار القارئ بأمر /reciter) وتفسيرها بصمت بعدها (تختار التفسير وطريقة وصوله بأمر /tafsir).',
+    'بوت "آية" يصحبك مع كتاب الله آيةً آية، سواء كنت تحفظ أو تتدبّر تفسيرها:',
+    '• تصلك كل يوم آية واحدة، ومعها آيات سابقة من السورة نفسها للمراجعة (تختار عددها، أو صفرًا إن أردت الآية وحدها).',
+    '• ولا تتقدّم آيتك حتى تضغط «أتممتُها»، فإن انقطعت أيامًا تكرّرت آية اليوم ولا تفوتك واحدة.',
+    '• تصلك تلاوة الآية صوتيًا (تختار القارئ بأمر /reciter)، وتفسيرها بصمت بعدها مع رابط لقراءته كاملًا من مصدر موثوق (تختار التفسير بأمر /tafsir).',
     '• تختار السورة التي تبدأ بها، والترتيب: من الناس (منهج الحفظ) أو من الفاتحة (ترتيب المصحف).',
-    '• تختار وقت الإرسال والأيام التي تناسبك.',
-    '• يمكنك أخذ راحة وقتما تشاء، وتعود من حيث توقفت.',
+    '• تختار وقتك وأيامك، ولك أن تأخذ راحة وتعود من حيث وقفت.',
     'اضغط Start للبدء بإذن الله.',
   ].join('\n'),
 };

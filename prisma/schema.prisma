@@ -194,6 +194,11 @@ model DeliveryLog {
   status       String @default("sent") @db.VarChar(16) // "sent" | "failed" | "skipped"
 
   sentAt    DateTime? @map("sent_at")
+  // When the subscriber marked this day's ayah DONE (the "أتممتُها" button or
+  // /next). Null until done. Read-gated: the position advances only on this
+  // confirm, so the same ayah repeats each day until it is set; the count of
+  // unconfirmed "sent" rows before today is the "days since last review" number.
+  confirmedAt DateTime? @map("confirmed_at")
   createdAt DateTime  @default(now()) @map("created_at")
 
   subscriber Subscriber @relation(fields: [subscriberId], references: [id], onDelete: Cascade)

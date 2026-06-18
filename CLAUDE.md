@@ -47,10 +47,15 @@ Read `docs/ERD.md` and `docs/DATABASE.md` before changing data or the schema.
    keeps it easy to test.
 3. The bot sends plain text, never Markdown or HTML parse_mode. Quran text
    would make a parsed message fail with a 400. See `src/lib/send.ts`.
-4. Advance a subscriber's position ONLY after a real send. A failed send
-   must retry the same ayah, never skip it.
+4. Advance a subscriber's position ONLY when they mark the ayah DONE (the
+   "أتممتُها" button or `/next`) — never on a mere send, and never on a failed
+   one. The daily send records the day but does not move `currentEntryId`, so
+   the same ayah (and its review window) repeats until done — exactly what hifz
+   and unhurried tafsir-reading want — and no missed day skips an ayah. See
+   "Read-gated" below.
 5. One ayah per subscriber per local day. The `unique(subscriberId,
    scheduledFor)` index on `DeliveryLog` is the lock. Do not work around it.
+   `confirmedAt` records whether that day's ayah was marked done.
 6. A track is the whole Quran in one order, every ayah present. There are two:
    `kids-hifz` (reverse, from An-Nas, the default) and `mushaf` (forward,
    from Al-Fatihah). Both are seeded data, not code. Choosing a STARTING POINT
@@ -113,13 +118,15 @@ and tafseer arrive exactly once — the day that ayah is delivered. A later
 `/today` that just re-shows the same already-delivered ayah, or a peek on an off
 day / while paused, sends the ayah again but NOT the audio or tafseer. Changing surah re-points the position; the new ayah's
 tafseer then arrives the first time that ayah is actually delivered (now, if the
-reposition claims a free day; otherwise at the next scheduled send). Because both
+reposition records a free day; otherwise at the next scheduled send). Because both
 the scheduler and `/today` gate on the 'sent' commit, the unique
 (subscriber, date) lock guarantees the tafseer is sent once even in the
 sub-second race. The send is wrapped so a tafseer hiccup never aborts the rest of
 the batch (the delivery is already committed). See `tafseerMessagesFor` and the
-claim-gated `TodayView.tafseer` in deliver.ts, and `formatTafseerMessages` in
-`src/core/tafseer.ts`.
+record-gated `TodayView.tafseer` in deliver.ts, and `formatTafseerMessages` in
+`src/core/tafseer.ts` — which now ALWAYS attaches a "اقرأ التفسير كاملًا" link to
+the trusted source, so a cross-reference ("سبق الكلام عليها في أول سورة البقرة")
+is one tap from the full text. We never substitute or invent tafsir text.
 
 Both the audio and the tafseer read the subscriber's CURRENT settings at send
 time, on every entry point (the scheduler, `/today`, and a reposition), so a
@@ -137,7 +144,7 @@ setting change is honoured on the very next delivery with no extra wiring:
   tafseer is for TODAY's ayah only, never the review block.
 - Jump with `/surah` (or a surah / onboarding button): the audio and tafseer are
   for the NEW ayah, because the reposition delivers from the new position; they
-  arrive the first time that ayah is actually delivered (now if it claims a free
+  arrive the first time that ayah is actually delivered (now if it records a free
   day, otherwise at the next scheduled send).
 - Change the review count with `/review N`: that only resizes the review block
   shown with the ayah; the audio and tafseer are always for the single daily
@@ -155,22 +162,38 @@ the position, and fires no milestone, so it can be tapped freely and never
 duplicates or collides with the once-a-day send. (Pull, not push, on purpose —
 consistent with `/today` and the silent-companion design.)
 
-`/today` and repositioning (`/surah` and the surah / onboarding buttons) deliver
-today's ayah the same way: they reuse `buildTodayView` + `commitDelivery`, so a
-subscriber who reads early "claims" the day (records the delivery and advances)
-and the scheduler then skips it. The same `unique(subscriber, scheduledFor)`
-lock keeps it to one ayah per local day across every entry point.
+### Read-gated (advance only when done)
 
-When a delivered ayah is the LAST of its surah, the bot follows it with a
-milestone message (`surahCompletionFor` decides this, `buildCompletionMessage`
-renders it) naming the next surah, with buttons to continue / pick another /
-repeat the surah. It is a non-blocking celebration: the position has already
-advanced to the next surah, so doing nothing simply continues. Finishing the
-track's final entry says "you completed the whole Quran" instead — but only once
-a full track's worth of ayat has actually been delivered (a `DeliveryLog`
-count), so picking a surah near the order's end can't trigger a false khatma.
-The milestone is sent only after a real `commitDelivery` ('sent', not
-'duplicate'), so the /today-vs-scheduler race never double-celebrates. A long surah
+The position advances ONLY when the subscriber marks the ayah done — the
+"أتممتُها — التالية" button under every ayah (`READ_CONFIRM` → `handleDone`), or
+`/next` (`advanceAndShowNext`). The daily send, `/today`, and repositioning all
+RECORD the day (`commitDelivery`, which now sets `currentEntryId` to the
+delivered entry but never advances) without moving on, so the same ayah and its
+review window repeat each day until done. `confirmRead` does the advance as an
+atomic compare-and-set on `currentEntryId` (idempotent: a double/stale tap is a
+harmless no-op), marks every still-unconfirmed `sent` row done, and is where the
+surah-completion milestone now fires. A repeating unread ayah is led by a gentle
+"لم تُتمّ آيتك منذ N يوم" nudge + an encouragement ayah (`countUnreadDeliveriesBefore`,
+`pickQuranVirtue` in `reference/quran-virtues.ts`, `sendMissedDaysNudge`; the
+ayah text is read from the DB, never typed). `/next` lets a fast learner advance
+several ayat in one sitting; there is no "multiple ayat per day" setting. This
+serves both audiences with one model: a memorizer taps done when memorized, a
+tafsir reader when they have read/reflected — the wording is neutral.
+
+`/today` and repositioning (`/surah` and the surah / onboarding buttons) show
+today's ayah via `buildTodayView` + `sendTodayView`: the ayah is always the LIVE
+current one (a view never advances), and on a free day the show is recorded so
+the scheduler skips it. The same `unique(subscriber, scheduledFor)` lock keeps
+it to one ayah per local day across every entry point. The "أتممتُها" button is
+silent (the ayah is the day's one notification) and rides every shown ayah.
+
+When the CONFIRMED ayah is the LAST of its surah, `handleDone` (and `/next`)
+follows it with a milestone (`surahCompletionFor` decides, `buildCompletionMessage`
+renders) naming the next surah, with buttons to continue / pick another / repeat
+the surah. Finishing the track's final entry says "you completed the whole
+Quran" instead — but only once a full track's worth of ayat has actually been
+delivered (a `DeliveryLog` count), so picking a surah near the order's end can't
+trigger a false khatma. A long surah
 is never re-sent from its start: the review block is always the last N ayat
 (`reviewCount`, 0–20), clamped so it never crosses into the previous surah. The
 formatter (`src/core/format.ts`) splits a passage across messages at ayah

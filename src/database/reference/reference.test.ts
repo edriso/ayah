@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { SURAHS } from './surahs';
 import { AYAH_COUNTS, TOTAL_AYAT, ayahCountFor } from './ayah-counts';
 import { buildKidsOrder, buildMushafOrder, ORDERS } from './curriculum';
+import { QURAN_VIRTUES, QURAN_VIRTUE_COUNT, pickQuranVirtue } from './quran-virtues';
 
 describe('surah reference table', () => {
   it('has all 114 surahs', () => {
@@ -90,5 +91,33 @@ describe('mushaf (forward) curriculum order', () => {
 describe('ORDERS', () => {
   it('lists the kids (reverse) and mushaf (forward) tracks', () => {
     expect(ORDERS.map((o) => o.key)).toEqual(['kids-hifz', 'mushaf']);
+  });
+});
+
+describe('quran-virtues encouragement deck', () => {
+  it('has a non-empty deck and a matching count', () => {
+    expect(QURAN_VIRTUE_COUNT).toBe(QURAN_VIRTUES.length);
+    expect(QURAN_VIRTUE_COUNT).toBeGreaterThan(0);
+  });
+
+  it('references only real ayat (oracle-checked, so getAyahText resolves them)', () => {
+    for (const v of QURAN_VIRTUES) {
+      expect(v.surah).toBeGreaterThanOrEqual(1);
+      expect(v.surah).toBeLessThanOrEqual(114);
+      expect(v.ayah).toBeGreaterThanOrEqual(1);
+      expect(v.ayah).toBeLessThanOrEqual(ayahCountFor(v.surah));
+    }
+  });
+
+  it('never hard-codes Quran text in a note (golden rule)', () => {
+    for (const v of QURAN_VIRTUES) {
+      expect(v.note ?? '').not.toMatch(/[﴿﴾]/);
+    }
+  });
+
+  it('pickQuranVirtue rotates by missed days and clamps a 0/low input', () => {
+    expect(pickQuranVirtue(1)).toBe(QURAN_VIRTUES[0]);
+    expect(pickQuranVirtue(QURAN_VIRTUE_COUNT + 1)).toBe(QURAN_VIRTUES[0]);
+    expect(pickQuranVirtue(0)).toBe(QURAN_VIRTUES[0]);
   });
 });

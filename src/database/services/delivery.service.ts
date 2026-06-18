@@ -116,47 +116,42 @@ export function countDeliveries(subscriberId: number): Promise<number> {
 export type CommitResult = 'sent' | 'duplicate';
 
 /**
- * Record a successful delivery and move the subscriber forward by one step,
- * all in one transaction. Call this ONLY after the message was actually
- * sent, so a failed send never advances the position (the subscriber would
- * silently skip an ayah otherwise).
+ * Record a successful delivery, all in one transaction. Call this ONLY after
+ * the message was actually sent.
+ *
+ * Read-gated: this does NOT advance the position. It records the day (the
+ * idempotency row) and sets `currentEntryId` to the delivered entry — "where
+ * they are now". (That set matters for a brand-new subscriber whose pointer was
+ * null, since resolveTargetEntry treats `startedAt set + currentEntryId null` as
+ * "finished".) The position moves only later, on a confirmed done (confirmRead),
+ * so the same ayah repeats each day until the subscriber marks it done — exactly
+ * what hifz (and unhurried tafsir reading) want.
  *
  * The unique (subscriber, scheduledFor) index is the idempotency lock: if a
- * second call races in for the same local day, the insert fails and we
- * report 'duplicate' without advancing twice.
+ * second call races in for the same local day, the insert fails and we report
+ * 'duplicate' without recording twice.
  */
 export async function commitDelivery(params: {
   subscriberId: number;
   entry: EntryWithAyah;
   scheduledFor: string;
-  totalEntries: number;
-  loops: boolean;
   /** The subscriber's current startedAt, so we stamp it only the first time. */
   startedAt: Date | null;
   now?: Date;
 }): Promise<CommitResult> {
-  const { subscriberId, entry, scheduledFor, totalEntries, loops, startedAt } = params;
+  const { subscriberId, entry, scheduledFor, startedAt } = params;
   const now = params.now ?? new Date();
-
-  const nextPosition = advancePosition(entry.position, totalEntries, loops);
-  const nextEntry =
-    nextPosition === null ? null : await getEntryAtPosition(entry.trackId, nextPosition);
 
   try {
     await prisma.$transaction([
       prisma.deliveryLog.create({
-        data: {
-          subscriberId,
-          trackEntryId: entry.id,
-          scheduledFor,
-          status: 'sent',
-          sentAt: now,
-        },
+        data: { subscriberId, trackEntryId: entry.id, scheduledFor, status: 'sent', sentAt: now },
       }),
       prisma.subscriber.update({
         where: { id: subscriberId },
         data: {
-          currentEntryId: nextEntry ? nextEntry.id : null,
+          // Mark where they are now (no advance — that happens on confirm).
+          currentEntryId: entry.id,
           // Stamp the "member since" time on the very first delivery only.
           ...(startedAt === null ? { startedAt: now } : {}),
         },
@@ -167,4 +162,72 @@ export async function commitDelivery(params: {
     if ((err as { code?: string }).code === 'P2002') return 'duplicate';
     throw err;
   }
+}
+
+export type ConfirmResult = 'advanced' | 'already';
+
+/**
+ * Mark a subscriber's current ayah DONE and move them one step forward, in one
+ * transaction. Used by the "أتممتُها" button and /next.
+ *
+ * The advance is an atomic compare-and-set: `updateMany` only matches while
+ * `currentEntryId` is still the entry being confirmed, so a double tap or a
+ * stale button from an earlier day moves no one twice — the second call matches
+ * no row and returns 'already'. That is what makes old buttons harmless.
+ *
+ * Returns 'advanced' on the real move (the caller then fires the surah
+ * milestone if the confirmed entry finished a surah), or 'already' otherwise.
+ */
+export async function confirmRead(params: {
+  subscriberId: number;
+  /** The entry being confirmed — the one the subscriber is currently on. */
+  entry: EntryWithAyah;
+  totalEntries: number;
+  loops: boolean;
+  now?: Date;
+}): Promise<ConfirmResult> {
+  const { subscriberId, entry, totalEntries, loops } = params;
+  const now = params.now ?? new Date();
+
+  const nextPosition = advancePosition(entry.position, totalEntries, loops);
+  const nextEntry =
+    nextPosition === null ? null : await getEntryAtPosition(entry.trackId, nextPosition);
+
+  const moved = await prisma.subscriber.updateMany({
+    where: { id: subscriberId, currentEntryId: entry.id },
+    data: { currentEntryId: nextEntry ? nextEntry.id : null },
+  });
+  if (moved.count === 0) return 'already';
+  // Mark this and any earlier unread days done, so "days since last review"
+  // resets. (All unconfirmed rows are for the same current ayah.)
+  await prisma.deliveryLog.updateMany({
+    where: { subscriberId, status: 'sent', confirmedAt: null },
+    data: { confirmedAt: now },
+  });
+  return 'advanced';
+}
+
+/**
+ * The track entry id of the most recent still-unconfirmed "sent" delivery, or
+ * null. The source of truth for the "أتممتُها" button: it is the entry the
+ * subscriber is currently on (the position only moves on confirm). Null means
+ * there is nothing to confirm (already done, or nothing sent yet).
+ */
+export function getLatestUnconfirmedDelivery(subscriberId: number) {
+  return prisma.deliveryLog.findFirst({
+    where: { subscriberId, status: 'sent', confirmedAt: null },
+    orderBy: { scheduledFor: 'desc' },
+    select: { trackEntryId: true },
+  });
+}
+
+/**
+ * How many days BEFORE `today` this subscriber was sent an ayah and has not yet
+ * marked done — the gentle "لم تُراجع منذ N يوم" number. Today is excluded so
+ * the count reflects past misses, not the ayah just shown.
+ */
+export function countUnreadDeliveriesBefore(subscriberId: number, today: string): Promise<number> {
+  return prisma.deliveryLog.count({
+    where: { subscriberId, status: 'sent', confirmedAt: null, scheduledFor: { lt: today } },
+  });
 }

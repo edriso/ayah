@@ -28,3 +28,4 @@ export * from './reference/ayah-counts';
 export * from './reference/curriculum';
 export * from './reference/reciters';
 export * from './reference/tafseers';
+export * from './reference/quran-virtues';

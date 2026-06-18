@@ -16,21 +16,22 @@ import {
   listDeliverableSubscribers,
   hasDeliveryFor,
   getDeliveryFor,
+  countUnreadDeliveriesBefore,
   resolveTargetEntry,
   commitDelivery,
-  buildDailyContent,
   surahCompletionFor,
-  countTrackEntries,
   getEntryById,
-  getTrackById,
   markBlocked,
   getTrackByKey,
   getEntryForAyah,
+  getAyahText,
+  buildDailyContent,
   getCachedAyahAudioId,
   cacheAyahAudioId,
   reciterByKey,
   getTafseerText,
   tafseerOrDefault,
+  pickQuranVirtue,
   DEFAULT_TAFSEER,
   KIDS_TRACK,
   type DeliverableSubscriber,
@@ -42,6 +43,12 @@ import { sendAudio } from './send-audio';
 import { buildCompletionKeyboard } from './completion-keyboard';
 import { COPY } from './copy';
 import { logger } from './logger';
+
+/** Callback data for the "أتممتُها — التالية" button under each ayah. A bare
+ *  constant: the latest unconfirmed delivery is the source of truth and the
+ *  confirm is an idempotent compare-and-set, so every day's button carries the
+ *  same data and old buttons are harmless. */
+export const READ_CONFIRM = 'ayah:done';
 
 export interface DeliveryStats {
   due: number;
@@ -158,6 +165,99 @@ export async function deliverAyahAudio(
   }
 }
 
+// ─── Read confirmation (the "أتممتُها — التالية" button) ─────────────
+
+/**
+ * Send the small "done?" prompt that carries the "أتممتُها — التالية" button.
+ * Silent (disable_notification): the ayah itself is the day's one notification,
+ * and this is its quiet companion. Best effort — a failure is logged and
+ * swallowed; the reader can still advance with /next.
+ */
+export async function sendConfirmPrompt(bot: Bot<Context>, chatId: bigint): Promise<void> {
+  try {
+    await bot.api.sendMessage(Number(chatId), COPY.confirmPrompt, {
+      reply_markup: new InlineKeyboard().text(COPY.doneBtn, READ_CONFIRM),
+      disable_notification: true,
+    });
+  } catch (err) {
+    logger.warn('Could not send the done prompt', { chatId: String(chatId), error: String(err) });
+  }
+}
+
+/**
+ * When the ayah has gone unconfirmed for one or more days, lead with a gentle
+ * "you have not reviewed for N days" note and a rotating ayah on the virtue of
+ * the Qur'an (its text read from the verified database, never typed). Silent
+ * (the ayah that follows is the notification) and best effort — never blocks
+ * the delivery. Does nothing when nothing was missed.
+ */
+export async function sendMissedDaysNudge(
+  bot: Bot<Context>,
+  chatId: bigint,
+  subscriberId: number,
+  timezone: string,
+  now: Date,
+): Promise<void> {
+  try {
+    const { date: today } = getLocalContext(timezone, now);
+    const missed = await countUnreadDeliveriesBefore(subscriberId, today);
+    if (missed === 0) return;
+    const virtue = pickQuranVirtue(missed);
+    const ayah = await getAyahText(virtue.surah, virtue.ayah);
+    if (!ayah) {
+      logger.error('Encouragement ayah not seeded; skipping the nudge', { ...virtue });
+      return;
+    }
+    await bot.api.sendMessage(Number(chatId), COPY.missedDaysMessage(missed, ayah), {
+      disable_notification: true,
+    });
+  } catch (err) {
+    logger.warn('Could not send the missed-days nudge', {
+      chatId: String(chatId),
+      error: String(err),
+    });
+  }
+}
+
+/** Fields sendAyahNow needs off a subscriber row. */
+export interface AyahNowSubscriber {
+  telegramId: bigint;
+  reviewCount: number;
+  reciter: string;
+  tafseerEnabled: boolean;
+  tafseerEdition: string;
+  tafseerFormat: string;
+}
+
+/**
+ * Send a subscriber's CURRENT ayah right now (its message + review, the
+ * recitation, and the tafseer), WITHOUT recording a delivery or attaching the
+ * done button. Used by /next, which has already advanced the position and is
+ * just showing the new ayah for a reader who wants to go further. Returns false
+ * when the ayah text could not be sent.
+ */
+export async function sendAyahNow(
+  bot: Bot<Context>,
+  sub: AyahNowSubscriber,
+  entry: EntryWithAyah,
+): Promise<boolean> {
+  const content = await buildDailyContent(entry, sub.reviewCount);
+  const result = await sendMessages(bot, sub.telegramId, formatDailyMessages(content));
+  if (result !== 'ok') return false;
+  await deliverAyahAudio(bot, sub.telegramId, entry, sub.reciter);
+  try {
+    for (const msg of await tafseerMessagesFor(entry, sub)) {
+      await bot.api.sendMessage(Number(sub.telegramId), msg.text, {
+        disable_notification: true,
+        reply_markup: tafseerReplyMarkup(msg),
+      });
+    }
+  } catch (err) {
+    logger.error('Failed to send tafseer (/next)', { error: String(err) });
+  }
+  return true;
+}
+
 /**
  * The heart of the bot: find every subscriber whose ayah is due right now
  * and send it. Safe to run every minute and safe to run twice for the same
@@ -166,8 +266,12 @@ export async function deliverAyahAudio(
  *   - a (subscriber, local date) delivery record makes it send at most once
  *     per local day, even on a restart catch-up or a double cron fire.
  *   - one subscriber failing is caught and never stops the rest.
- *   - the position only advances AFTER a successful send, so a failed send
- *     re-sends the same ayah next time instead of skipping it.
+ *
+ * Read-gated: the send records the day but does NOT advance the position. The
+ * same ayah repeats each day until the subscriber marks it done ("أتممتُها" or
+ * /next) — so a missed day never skips an ayah, and the surah-completion
+ * milestone fires on confirm (handleDone), not here. A repeat is led by a gentle
+ * "days since last review" nudge.
  */
 export async function deliverDueSubscribers(
   bot: Bot<Context>,
@@ -175,16 +279,6 @@ export async function deliverDueSubscribers(
 ): Promise<DeliveryStats> {
   const subscribers = await listDeliverableSubscribers();
   const stats: DeliveryStats = { due: 0, sent: 0, skipped: 0, failed: 0 };
-
-  // Cache total entries per track so we do not re-count for every subscriber.
-  const totalsByTrack = new Map<number, number>();
-  const totalFor = async (trackId: number): Promise<number> => {
-    const cached = totalsByTrack.get(trackId);
-    if (cached !== undefined) return cached;
-    const total = await countTrackEntries(trackId);
-    totalsByTrack.set(trackId, total);
-    return total;
-  };
 
   for (const sub of subscribers) {
     try {
@@ -203,6 +297,10 @@ export async function deliverDueSubscribers(
         continue;
       }
 
+      // If the ayah has been repeating unconfirmed, lead with a gentle nudge +
+      // an encouragement ayah (silent, best effort, never blocks the send).
+      await sendMissedDaysNudge(bot, sub.telegramId, sub.id, sub.timezone, now);
+
       const content = await buildDailyContent(entry, sub.reviewCount);
       const result = await sendMessages(bot, sub.telegramId, formatDailyMessages(content));
 
@@ -213,30 +311,23 @@ export async function deliverDueSubscribers(
       }
       if (result === 'failed') {
         stats.failed++;
-        continue; // do NOT advance; retried next tick
+        continue; // nothing recorded; retried next tick
       }
 
+      // Record the day (no advance — the position moves on a confirmed done).
       const committed = await commitDelivery({
         subscriberId: sub.id,
         entry,
         scheduledFor,
-        totalEntries: await totalFor(sub.trackId),
-        loops: sub.track.loops,
         startedAt: sub.startedAt,
         now,
       });
       if (committed === 'sent') {
         stats.sent++;
 
-        // The ayah was delivered (and only now, on a real 'sent' commit — never
-        // on the loser of a /today race). Follow it, in reading order, with the
-        // recitation audio then the tafseer — both SILENT (no notification
-        // sound) — so each arrives exactly once, the day the ayah is delivered.
-        // Audio is best-effort inside deliverAyahAudio.
+        // Follow the ayah, in reading order, with the recitation then the
+        // tafseer — both SILENT — so each arrives once, the day it is delivered.
         await deliverAyahAudio(bot, sub.telegramId, entry, sub.reciter);
-
-        // Tafseer (silent). Wrapped so a hiccup never aborts the rest of the
-        // batch; the delivery is already committed.
         try {
           for (const msg of await tafseerMessagesFor(entry, sub)) {
             await bot.api.sendMessage(Number(sub.telegramId), msg.text, {
@@ -248,27 +339,9 @@ export async function deliverDueSubscribers(
           logger.error('Failed to send tafseer', { id: sub.id, error: String(err) });
         }
 
-        // If today's ayah finished a surah, follow it with the milestone
-        // message + keyboard. Wrapped so a failure here never undoes the
-        // delivery (already committed) or aborts the rest of the batch.
-        try {
-          const completion = await buildCompletionMessage(
-            entry,
-            await totalFor(sub.trackId),
-            sub.track.loops,
-            sub.id,
-          );
-          if (completion) {
-            await bot.api.sendMessage(Number(sub.telegramId), completion.text, {
-              reply_markup: completion.keyboard,
-            });
-          }
-        } catch (err) {
-          logger.error('Failed to send surah-completion message', {
-            id: sub.id,
-            error: String(err),
-          });
-        }
+        // Finally, the "أتممتُها — التالية" button. Tapping it advances and (if
+        // this ayah finished a surah) fires the milestone — see handleDone.
+        await sendConfirmPrompt(bot, sub.telegramId);
       } else stats.skipped++; // a race delivered the same day first
     } catch (err) {
       stats.failed++;
@@ -279,36 +352,31 @@ export async function deliverDueSubscribers(
   return stats;
 }
 
-/** What /today should send the user, and whether to record it as the day's
- *  delivery so the scheduler does not send the same ayah again. */
+/** What /today (and /surah) shows, and whether to record it as the day's
+ *  delivery so the scheduler does not send the same ayah again. Read-gated: the
+ *  ayah is always the LIVE current one (a view never advances the position), so
+ *  a re-show or a just-repositioned ayah is shown straight from
+ *  resolveTargetEntry — there is no frozen "delivered" ayah to fetch. */
 export interface TodayView {
   /** The messages to reply (today's ayah + review), or empty when nothing can
    *  be prepared (a dangling entry, or a finished non-looping track). */
   messages: string[];
   /**
-   * The tafseer message(s) to send AFTER the ayah, silently (no notification
-   * sound), when this view becomes a committed delivery. It is non-empty ONLY
-   * when `claim` is set (a real delivery is happening now): a re-show of an
-   * already-delivered ayah, or a peek on an off day / while paused, sends no
-   * tafseer, so the subscriber gets each ayah's tafseer once — with the day it
-   * is delivered. Also empty when tafseer is off or the ayah has none. The
-   * caller sends each with disable_notification (and tafseerReplyMarkup for the
-   * "read in full" button), only on a 'sent' commit.
+   * The tafseer message(s) to send AFTER the ayah, silently, ONLY when this view
+   * is RECORDED as today's delivery (a real, fresh delivery). A re-show, or a
+   * peek on an off/paused day, sends no tafseer, so each ayah's tafseer arrives
+   * once — the day it is delivered. Also empty when tafseer is off or the ayah
+   * has none.
    */
   tafseer: TafseerMessage[];
   /**
-   * Set when this view should be COMMITTED as today's delivery (the user pulled
-   * their ayah before the scheduled send). The caller records it AFTER the
-   * messages are shown, so the scheduler skips the day. Null on an off day or
-   * while paused (nothing scheduled to dedupe against), and null when today was
-   * already delivered (re-show only).
+   * Set when this view should be RECORDED as today's delivery (today is free:
+   * active day, not paused, not already delivered). The caller records it AFTER
+   * the messages are shown, so the scheduler skips the day. Recording does NOT
+   * advance the position (the subscriber advances on a confirmed done). Null on
+   * a re-show, an off day, or while paused.
    */
-  claim: {
-    scheduledFor: string;
-    entry: EntryWithAyah;
-    totalEntries: number;
-    loops: boolean;
-  } | null;
+  record: { scheduledFor: string; entry: EntryWithAyah } | null;
   /** True when today's ayah was already delivered and this is a re-show. */
   alreadyDelivered: boolean;
 }
@@ -331,69 +399,33 @@ export interface TodaySubscriber {
 /**
  * Decide what /today shows and whether it counts as today's delivery.
  *
- * /today is "give me today's ayah now". If the user pulls it on an active day
- * before the scheduled send, that pull IS today's delivery: we show the ayah
- * and the caller records it (so the scheduler does not send it again). If today
- * was already delivered (by an earlier /today or the scheduler), we re-show the
- * exact ayah that was delivered (from the recorded trackEntryId, since the
- * subscriber's pointer has already advanced past it) without advancing again.
- * On an off day or while paused there is no scheduled send to dedupe against,
- * so /today stays a pure peek that never advances.
+ * The ayah is always the LIVE current one (the position only moves on a
+ * confirmed done), so a re-show of an already-delivered day, and a just-set
+ * ayah after /surah, both render straight from resolveTargetEntry. When today
+ * is still free (active day, not paused, not delivered) the show RECORDS today's
+ * delivery so the scheduler skips it — without advancing.
  */
-export async function buildTodayView(
-  sub: TodaySubscriber,
-  now: Date,
-  opts: { reposition?: boolean } = {},
-): Promise<TodayView> {
+export async function buildTodayView(sub: TodaySubscriber, now: Date): Promise<TodayView> {
   const local = getLocalContext(sub.timezone, now);
   const scheduledFor = local.date;
   const delivered = await getDeliveryFor(sub.id, scheduledFor);
 
-  // /today on an already-delivered day re-shows exactly that ayah. A reposition
-  // (/surah, a surah-pick button, onboarding) instead always shows the NEW ayah
-  // the user just chose, so it skips this re-show and renders it below.
-  if (delivered && !opts.reposition) {
-    const entry = await getEntryById(delivered.trackEntryId);
-    if (!entry) return { messages: [], tafseer: [], claim: null, alreadyDelivered: true };
-    const content = await buildDailyContent(entry, sub.reviewCount);
-    // A re-show: the subscriber already received this ayah's tafseer the day it
-    // was delivered, so do not send it again.
-    return {
-      messages: formatDailyMessages(content),
-      tafseer: [],
-      claim: null,
-      alreadyDelivered: true,
-    };
-  }
-
-  // Show the current ayah (or the first, if not started).
   const entry = await resolveTargetEntry(sub);
   if (!entry)
-    return { messages: [], tafseer: [], claim: null, alreadyDelivered: delivered !== null };
+    return { messages: [], tafseer: [], record: null, alreadyDelivered: delivered !== null };
   const content = await buildDailyContent(entry, sub.reviewCount);
   const messages = formatDailyMessages(content);
 
-  // Claim it as today's delivery only when today is genuinely free: not already
-  // delivered, an active day, and not paused. A reposition on an
-  // already-delivered (or off / paused) day just shows the new ayah as a
-  // preview and leaves today's record and the position untouched.
-  const claimable =
+  // Record today only when it is genuinely free: not already delivered, an
+  // active day, and not paused. Recording does NOT advance — the subscriber
+  // advances on a confirmed done.
+  const recordable =
     delivered === null && sub.pausedAt === null && isDayActive(sub.activeDays, local.isoWeekday);
-  let claim: TodayView['claim'] = null;
-  if (claimable) {
-    const track = await getTrackById(sub.trackId);
-    claim = {
-      scheduledFor,
-      entry,
-      totalEntries: await countTrackEntries(sub.trackId),
-      loops: track?.loops ?? false,
-    };
-  }
-  // Tafseer accompanies a real (claimed) delivery only — not a peek on an off
-  // day or while paused — so the subscriber gets each ayah's tafseer once, the
-  // day it is actually delivered (here, or at the next scheduled send).
-  const tafseer = claim ? await tafseerMessagesFor(entry, sub) : [];
-  return { messages, tafseer, claim, alreadyDelivered: delivered !== null };
+  const record = recordable ? { scheduledFor, entry } : null;
+  // Tafseer accompanies a real (recorded) delivery only, so each ayah's tafseer
+  // arrives once — the day it is actually delivered (here, or at the next send).
+  const tafseer = record ? await tafseerMessagesFor(entry, sub) : [];
+  return { messages, tafseer, record, alreadyDelivered: delivered !== null };
 }
 
 /**
