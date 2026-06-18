@@ -56,13 +56,15 @@ Subscriber (who we deliver to)
   deliveryHour    0..23, local time
   deliveryMinute  0..59, local time
   activeDays      7-bit mask, bit 0 = Monday .. bit 6 = Sunday
-  reviewCount     previous ayat to review (0..20, default 10)
+  reviewCount     RECENT review: previous ayat of the same surah (0..20, default 10)
+  oldReviewCount  CONSOLIDATION review (التثبيت): old confirmed ayat/day (0..10, default 3)
+  reviewCursor    rotation index into the confirmed corpus (advances once per recorded day)
   tafseerEnabled  send the ayah's tafseer (silently) after it (default true)
   tafseerEdition  which tafseer edition (key, default "muyassar")
   tafseerFormat   "text" (inline) | "link" (default "text")
   reciter         recitation-audio reciter key, or "none" (default husary-muallim)
   trackId         FK -> Track.id
-  currentEntryId  FK -> TrackEntry.id, null = not started
+  currentEntryId  FK -> TrackEntry.id, the CURRENT ayah; null = not started
   pausedAt        null = active, set = on a break
   blockedAt       null = reachable, set = user blocked the bot
   startedAt       first delivery time
@@ -74,6 +76,7 @@ DeliveryLog (history + idempotency)
   scheduledFor  local date "YYYY-MM-DD"
   status        "sent" | "failed" | "skipped"
   sentAt
+  confirmedAt   set when the reader marked this day's ayah DONE; null = not yet
   unique(subscriberId, scheduledFor)   <-- one ayah per local day
 
 AyahAudio (recitation audio file_id cache)
@@ -111,8 +114,17 @@ bot uses `pausedUntil` for fixed-length breaks; we chose indefinite to match
 
 `unique(subscriberId, scheduledFor)` means a subscriber can get at most one
 ayah per local day. Even if the scheduler double-fires, or the bot restarts
-and runs a catch-up, the second insert fails and we skip. The position only
-advances after a real send, so a failed send is retried, never skipped.
+and runs a catch-up, the second insert fails and we skip.
+
+### Read-gated: the position advances on a confirmed READ, not on the send
+
+`confirmedAt` records whether the reader marked that day's ayah DONE (the
+"أتممتُها — التالية" button, or `/next`). The daily send RECORDS the day but
+does NOT move `currentEntryId`; only `confirmRead` advances it (an atomic
+compare-and-set, idempotent against stale/double taps). So the same ayah repeats
+each day until done — exactly what hifz wants, and no missed day skips an ayah.
+The count of unconfirmed `sent` rows before today is the gentle "days since last
+review" number; the surah-completion milestone fires on the confirm.
 
 ### The position is told apart from "finished"
 
@@ -120,7 +132,7 @@ advances after a real send, so a failed send is retried, never skipped.
 apart:
 
 - `currentEntryId` null and `startedAt` null  -> brand new, start at 0
-- `currentEntryId` set                          -> that entry is next
+- `currentEntryId` set                          -> the CURRENT (unconfirmed) ayah
 - `currentEntryId` null and `startedAt` set     -> finished a non-looping
   track, nothing more to send
 
@@ -138,18 +150,25 @@ re-fetches. The table therefore holds only short id strings (at most
 6236 ayat × the offered reciters, a few MB), and fills lazily as ayat are
 delivered. See `docs/DATABASE.md` for the source and the reciter list.
 
-## The review query
+## The two reviews
 
-From the current entry we know the ayah's surah and its number `n`. The
-review shows the subscriber's `reviewCount` PREVIOUS ayat (not today's): ayat
-where `surahNumber = surah` and `numberInSurah` is between
-`max(1, n - reviewCount)` and `n - 1`. The clamp to 1 stops it crossing into
-the previous surah; when `n` is ayah 1 there is nothing to review. Today's
-ayah is shown on its own, so the longest verses are never duplicated. See
-`src/core/review.ts`.
+**Recent (القريبة) — `reviewCount`.** From the current entry we know the ayah's
+surah and its number `n`. The recent review shows the `reviewCount` PREVIOUS
+ayat of the SAME surah: `numberInSurah` between `max(1, n - reviewCount)` and
+`n - 1` (the clamp to 1 stops it crossing into the previous surah; ayah 1 has
+nothing earlier). It reads as one passage leading into today's ayah (الربط).
+See `reviewRange` in `src/core/review.ts` and `formatDailyMessages`.
 
-Each delivery can be more than one message: today's ayah, then the review.
-On long surahs the review is split across several messages so none exceeds
-Telegram's 4096-character limit (see `formatDailyMessages` in
-`src/core/format.ts`). The default review of 10 always fits in one
-message; only larger settings split, and then only in the longest surahs.
+**Distant / consolidation (البعيدة, التثبيت) — `oldReviewCount` + `reviewCursor`.**
+Each real daily delivery also revisits `oldReviewCount` previously-CONFIRMED ayat
+(0 = off), rotating through the whole memorized corpus in track order via
+`reviewCursor`, looping — so old memorization does not slip. The corpus is the
+track entries with a confirmed delivery (`countConfirmedAyat` / `getRevisionAyat`
+in `delivery.service.ts`); it shows only what was truly memorized, never the
+current unconfirmed ayah, and grows with progress. The cursor advances once per
+recorded day, inside the same `commitDelivery` transaction. The labeled
+cross-surah list is rendered by `formatRevisionMessages` and sent silently.
+
+Each delivery can be more than one message (today's ayah + its passage, then the
+silent tafseer and the silent review). Long passages/lists split at ayah
+boundaries so none exceeds Telegram's 4096-character limit (`src/core/format.ts`).
