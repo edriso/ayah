@@ -163,3 +163,18 @@ describe('ayatCountAr (number-noun agreement)', () => {
     expect(ayatCountAr(286)).toBe('٢٨٦ آية');
   });
 });
+
+describe('review-card copy (consolidation count uses correct number-noun agreement)', () => {
+  it('reviewOldSet agrees for 1, 2, and 3-10 (not a bare "آيات")', () => {
+    expect(COPY.reviewOldSet(0)).toContain('أوقفنا');
+    expect(COPY.reviewOldSet(1)).toBe('مراجعة التثبيت: آية واحدة يوميًا ✅');
+    expect(COPY.reviewOldSet(2)).toBe('مراجعة التثبيت: آيتان يوميًا ✅');
+    expect(COPY.reviewOldSet(3)).toBe('مراجعة التثبيت: ٣ آيات يوميًا ✅');
+  });
+
+  it('reviewCard shows the consolidation count as an agreeing phrase, "متوقفة" at zero', () => {
+    expect(COPY.reviewCard(10, 0)).toContain('متوقفة');
+    expect(COPY.reviewCard(10, 1)).toContain('آية واحدة');
+    expect(COPY.reviewCard(10, 2)).toContain('آيتان');
+  });
+});

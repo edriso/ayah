@@ -84,6 +84,7 @@ import {
   deliverDueSubscribers,
   sampleEntryFor,
   revisionMessagesFor,
+  sendMissedDaysNudge,
 } from './deliver';
 import { COPY } from './copy';
 
@@ -487,5 +488,38 @@ describe('revisionMessagesFor (distant review window + cursor)', () => {
     const out = await revisionMessagesFor(sub({ oldReviewCount: 5, reviewCursor: 0 }), 112);
     expect(h.getRevisionAyat).toHaveBeenCalledWith(1, 0, 2, 112); // min(5, total=2)
     expect(out.nextCursor).toBe(2);
+  });
+});
+
+describe('sendMissedDaysNudge (push-only companion: gentle, framed, best-effort)', () => {
+  const bot = { api: { sendMessage: vi.fn() } } as never;
+  const api = (bot as { api: { sendMessage: ReturnType<typeof vi.fn> } }).api;
+
+  beforeEach(() => api.sendMessage.mockReset());
+
+  it('frames the encouragement verse so it can never be read as today’s ayah', async () => {
+    h.countUnreadDeliveriesBefore.mockResolvedValue(19);
+    await sendMissedDaysNudge(bot, 123n, 1, 'UTC', NOW);
+
+    const [, text, opts] = api.sendMessage.mock.calls[0];
+    expect(text).toContain('لم تُتمّ آيتك منذ'); // the gentle lead
+    expect(text).toContain('وهذه آيةٌ في فضل القرآن:'); // labels the verse as encouragement
+    expect(text).toContain('نص آية الفضل'); // the verse text, read from the DB
+    expect(text).not.toContain('آية اليوم'); // never claims to be the reader's own ayah
+    expect(opts).toMatchObject({ disable_notification: true }); // silent companion
+  });
+
+  it('sends nothing (and reads no verse) when the reader is not behind', async () => {
+    h.countUnreadDeliveriesBefore.mockResolvedValue(0);
+    await sendMissedDaysNudge(bot, 123n, 1, 'UTC', NOW);
+    expect(api.sendMessage).not.toHaveBeenCalled();
+    expect(h.getAyahText).not.toHaveBeenCalled();
+  });
+
+  it('is best-effort: a missing seeded verse sends nothing and never throws', async () => {
+    h.countUnreadDeliveriesBefore.mockResolvedValue(3);
+    h.getAyahText.mockResolvedValueOnce(null);
+    await expect(sendMissedDaysNudge(bot, 123n, 1, 'UTC', NOW)).resolves.toBeUndefined();
+    expect(api.sendMessage).not.toHaveBeenCalled();
   });
 });

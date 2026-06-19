@@ -157,6 +157,9 @@ describe('sendAfterReposition (read-gated: records, no advance)', () => {
     );
     expect(tafseerReply![1]).toMatchObject({ disable_notification: true });
     expect(h.sendConfirmPrompt).toHaveBeenCalledTimes(1); // the "done" button
+    // The missed-days nudge leads the SCHEDULED push only; a manual reposition
+    // (reader already engaged) is never interrupted by it.
+    expect(h.sendMissedDaysNudge).not.toHaveBeenCalled();
   });
 
   it('does NOT record or send audio on a preview, but still offers the done button', async () => {

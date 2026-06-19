@@ -372,12 +372,6 @@ export const COPY = {
   daysUpdated: (summary: string) => `تم تحديث أيام الإرسال: ${summary} ✅`,
   daysNone: 'لم تختر أي يوم، لن تصلك آيات. اختر يومًا واحدًا على الأقل، أو خذ راحة عبر /pause',
 
-  reviewUsage: (current: number) =>
-    [
-      `عدد آيات المراجعة الحالي: ${reviewSummaryAr(current)}.`,
-      `لتغييره اكتب رقمًا من ٠ إلى ٢٠، مثل ${ltr('/review 5')}`,
-      `واكتب ${ltr('/review 0')} لإيقاف المراجعة والاكتفاء بآية اليوم.`,
-    ].join('\n'),
   reviewInvalid: `الرجاء كتابة رقم صحيح من ٠ إلى ٢٠، مثل ${ltr('/review 5')}`,
   reviewUpdated: (count: number) =>
     count === 0
@@ -393,7 +387,7 @@ export const COPY = {
       '',
       `• المراجعة القريبة (مع آية اليوم، من نفس السورة): ${reviewSummaryAr(recent)}.`,
       `• مراجعة التثبيت (يوميًا مما حفظتَه سابقًا، على التدوير): ${
-        old === 0 ? 'متوقفة' : `${toArabicDigits(old)}`
+        old === 0 ? 'متوقفة' : `${ayatCountAr(old)}`
       }.`,
       '',
       'اختر العدد من الأزرار (الصف الأول للقريبة، والثاني للتثبيت):',
@@ -401,7 +395,7 @@ export const COPY = {
   reviewRecentSet: (n: number) =>
     n === 0 ? 'أوقفنا المراجعة القريبة ✅' : `المراجعة القريبة: ${reviewSummaryAr(n)} ✅`,
   reviewOldSet: (n: number) =>
-    n === 0 ? 'أوقفنا مراجعة التثبيت ✅' : `مراجعة التثبيت: ${toArabicDigits(n)} آيات يوميًا ✅`,
+    n === 0 ? 'أوقفنا مراجعة التثبيت ✅' : `مراجعة التثبيت: ${ayatCountAr(n)} يوميًا ✅`,
 
   // Tafseer card. The tafseer arrives as a silent message right after the daily
   // ayah, so it never adds a second notification sound. The subscriber turns it
