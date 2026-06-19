@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@grammyjs/auto-retry':
+        specifier: ^2.0.2
+        version: 2.0.2(grammy@1.43.0)
       '@prisma/adapter-mariadb':
         specifier: ^7.8.0
         version: 7.8.0
@@ -378,6 +381,12 @@ packages:
   '@eslint/plugin-kit@0.4.1':
     resolution: {integrity: sha512-43/qtrDUokr7LJqoF2c3+RInu/t4zfrpYdoSDfYyhg52rwLV6TnOvdG4fXm7IkSB3wErkcmJS9iEhjVtOSEjjA==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
+
+  '@grammyjs/auto-retry@2.0.2':
+    resolution: {integrity: sha512-b4A4p5jlYDiQtW0c0FXYe11WMkYoiW+5rvOaDMCOk1h7Pu2SDl7B7gmFF8cthWCx2+M2nWLOsBxAgbBG4kKWYg==}
+    engines: {node: '>=12.20.0 || >=14.13.1'}
+    peerDependencies:
+      grammy: ^1.10.0
 
   '@grammyjs/types@3.27.3':
     resolution: {integrity: sha512-yUKMLliGsGbnxu96YUJ7km7B0zy4PzeH/Jvti5705R/LeKDMqkDV4DckMSt+OrliWQpTwQljHE0QLol5zgxBkg==}
@@ -1960,6 +1969,13 @@ snapshots:
     dependencies:
       '@eslint/core': 0.17.0
       levn: 0.4.1
+
+  '@grammyjs/auto-retry@2.0.2(grammy@1.43.0)':
+    dependencies:
+      debug: 4.4.3
+      grammy: 1.43.0
+    transitivePeerDependencies:
+      - supports-color
 
   '@grammyjs/types@3.27.3': {}
 
