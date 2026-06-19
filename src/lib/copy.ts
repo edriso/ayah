@@ -284,7 +284,7 @@ export const COPY = {
   ) =>
     [
       `لم تُتمّ آيتك منذ ${daysCountAr(days)}.`,
-      'لا حرج، عُد متى شئت وآيتك بانتظارك من حيث توقفت.',
+      'كل يومٍ فرصةٌ جديدة؛ تابع من حيث توقفت، وما مضى لا يمنعك من خيرٍ تستأنفه اليوم.',
       '',
       // Frame the verse as an encouragement on the merit of the Qur'an — NOT the
       // reader's position — so a verse from another surah is never mistaken for

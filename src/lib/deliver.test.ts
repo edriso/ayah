@@ -503,6 +503,8 @@ describe('sendMissedDaysNudge (push-only companion: gentle, framed, best-effort)
 
     const [, text, opts] = api.sendMessage.mock.calls[0];
     expect(text).toContain('لم تُتمّ آيتك منذ'); // the gentle lead
+    expect(text).toContain('كل يومٍ فرصةٌ جديدة'); // returns agency to the reader (a fresh start)
+    expect(text).not.toContain('بانتظارك'); // the Qur'an does not "wait" on the reader
     expect(text).toContain('وهذه آيةٌ في فضل القرآن:'); // labels the verse as encouragement
     expect(text).toContain('نص آية الفضل'); // the verse text, read from the DB
     expect(text).not.toContain('آية اليوم'); // never claims to be the reader's own ayah
