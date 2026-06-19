@@ -60,7 +60,6 @@ import {
   tafseerReplyMarkup,
   sampleEntryFor,
   sendConfirmPrompt,
-  sendMissedDaysNudge,
   sendAyahNow,
   revisionMessagesFor,
   READ_CONFIRM,
@@ -317,9 +316,11 @@ function isAdmin(ctx: Context): boolean {
  * /today and the reposition flow. Read-gated: recording does NOT advance the
  * position (the subscriber advances on a confirmed done), and is committed only
  * AFTER the messages are shown, so a failed reply leaves the day unrecorded; the
- * unique (subscriber, date) index makes it safe even if the scheduler races. A
- * gentle missed-days nudge leads, and the "أتممتُها" button rides every shown
- * ayah (unless paused).
+ * unique (subscriber, date) index makes it safe even if the scheduler races. The
+ * "أتممتُها" button rides every shown ayah (unless paused). The missed-days nudge
+ * is NOT sent here: it leads the SCHEDULED daily push only (deliverDueSubscribers),
+ * so a manual /today or a /surah reposition — where the reader is already engaged —
+ * is never interrupted by it, and it can never repeat within one session.
  */
 export async function sendTodayView(
   ctx: Context,
@@ -327,10 +328,6 @@ export async function sendTodayView(
   view: TodayView,
   now: Date,
 ): Promise<void> {
-  // Lead with a gentle "days since last review" nudge + an encouragement ayah
-  // when the ayah has been repeating unconfirmed (silent, best effort).
-  await sendMissedDaysNudge(bot, sub.telegramId, sub.id, sub.timezone, now);
-
   for (const message of view.messages) await ctx.reply(message);
 
   // The distant review is computed BEFORE the commit (reads only past

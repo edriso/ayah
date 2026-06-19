@@ -199,7 +199,7 @@ export const COPY = {
       'مرحبًا بعودتك إلى بوت "آية". تصلك آية واحدة كل يوم بإذن الله — لحفظها أو لتدبّر تفسيرها — مع مراجعة لما سبق لتثبيته.',
       '',
       '👈 لرؤية آيتك الآن اضغط /today',
-      'وإذا أتممتها — حفظًا أو تدبّرًا — اضغط زر «أتممتُها — التالية» لتنتقل إلى ما بعدها. وما لم تؤكّد، تبقى آيتك بانتظارك ولا تفوتك واحدة.',
+      'وإذا أتممتها فاضغط زر «أتممتُها — التالية» لتنتقل إلى ما بعدها. وما لم تؤكّد، تبقى آيتك بانتظارك ولا تفوتك واحدة.',
       '',
       settings,
       '',
@@ -257,7 +257,7 @@ export const COPY = {
   // After a reposition on a free day: the chosen ayah is today's, and it is
   // recorded as today's delivery (no advance — you move on when you mark it done).
   repositionClaimed: (surahNameAr: string, numberInSurah: number) =>
-    `موضعك الآن ${positionSummaryAr(surahNameAr, numberInSurah)}، وهذه آية اليوم 🌿`,
+    `موضعك الآن ${positionSummaryAr(surahNameAr, numberInSurah)}، وهذه آية اليوم.`,
   // After a reposition when today is already delivered, an off day, or paused:
   // the ayah is shown as a preview and will arrive at the next scheduled time.
   repositionPreview: (surahNameAr: string, numberInSurah: number) =>
@@ -266,10 +266,9 @@ export const COPY = {
   // ── Done confirmation (the "أتممتُها" button) ─────────────────────
   // The button under each ayah, and the small silent prompt that carries it.
   doneBtn: '✅ أتممتُها — التالية',
-  confirmPrompt:
-    'إذا أتممت آية اليوم — حفظًا أو تدبّرًا لتفسيرها — فاضغط الزر لأنتقل بك إلى التالية 🌿',
+  confirmPrompt: 'إذا أتممتَ آية اليوم فاضغط الزر لأنتقل بك إلى التالية.',
   // After a confirmed done advances the reader. Mentions /next for going on now.
-  doneConfirmed: `بارك الله فيك ✓\nانتقلتَ إلى الآية التالية، تصلك في موعدها، أو اكتب ${ltr('/next')} لقراءتها الآن 🌿`,
+  doneConfirmed: `بارك الله فيك ✓\nانتقلتَ إلى الآية التالية، تصلك في موعدها، أو اكتب ${ltr('/next')} لقراءتها الآن.`,
   // Toast when an old/already-used "done" button is tapped (the position has
   // already moved on). Gentle: their progress is recorded, nothing is wrong.
   alreadyDone: 'سجّلنا إتمامك ✓',
@@ -284,8 +283,13 @@ export const COPY = {
     ayah: { text: string; surahNameAr: string; numberInSurah: number },
   ) =>
     [
-      `لم تُتمّ آيتك منذ ${daysCountAr(days)} 🌿`,
+      `لم تُتمّ آيتك منذ ${daysCountAr(days)}.`,
       'لا حرج، عُد متى شئت وآيتك بانتظارك من حيث توقفت.',
+      '',
+      // Frame the verse as an encouragement on the merit of the Qur'an — NOT the
+      // reader's position — so a verse from another surah is never mistaken for
+      // "today's ayah" (which follows next, clearly titled "🌿 آية اليوم").
+      'وهذه آيةٌ في فضل القرآن:',
       '',
       ayah.text,
       `[سورة ${ayah.surahNameAr} — آية ${toArabicDigits(ayah.numberInSurah)}]`,
@@ -336,11 +340,11 @@ export const COPY = {
   brokenOrNotStarted: 'لم نتمكن من تجهيز آية لك الآن، حاول لاحقًا بإذن الله.',
 
   // Shown above the ayah when /today re-shows an ayah already delivered today.
-  todayAlready: 'لقد وصلتك آية اليوم بالفعل، وهذه هي 🌿',
+  todayAlready: 'وصلتك آية اليوم من قبل، وهذه هي:',
 
   // The command sits at the end of its line so it stays tappable and the
   // right-to-left text does not reorder around it.
-  paused: 'تم إيقاف الإرسال مؤقتًا، وسيبقى موضعك محفوظًا 🌿\nوعندما تريد العودة اكتب /pause',
+  paused: 'تم إيقاف الإرسال مؤقتًا، وسيبقى موضعك محفوظًا.\nوعندما تريد العودة اكتب /pause',
   alreadyPaused: 'أنت في وضع الراحة بالفعل. للعودة اكتب /pause',
   resumed: 'أهلًا بعودتك 🌿 سنكمل من حيث توقفت بإذن الله.',
   alreadyActive: 'أنت لست في وضع الراحة. الإرسال يعمل بالفعل ✅',
@@ -385,7 +389,7 @@ export const COPY = {
   // daily, rotating through everything you confirmed, so the old never slips.
   reviewCard: (recent: number, old: number) =>
     [
-      'إعدادات المراجعة 🌿',
+      'إعدادات المراجعة',
       '',
       `• المراجعة القريبة (مع آية اليوم، من نفس السورة): ${reviewSummaryAr(recent)}.`,
       `• مراجعة التثبيت (يوميًا مما حفظتَه سابقًا، على التدوير): ${
@@ -455,8 +459,8 @@ export const COPY = {
   // it sends the new audio / tafseer for today's ayah without re-delivering it.
   tafsirSampleBtn: '📖 جرّب على آية اليوم',
   reciterSampleBtn: '🎧 جرّب على آية اليوم',
-  sampleSentAck: 'أرسلنا عينة على آية اليوم 🌿',
-  sampleNoAyah: 'ابدأ أولًا بـ /today لتجربة اختيارك 🌿',
+  sampleSentAck: 'أرسلنا عينة على آية اليوم',
+  sampleNoAyah: 'ابدأ أولًا بـ /today لتجربة اختيارك',
   sampleReciterOff: 'التلاوة متوقفة حاليًا',
   sampleTafsirOff: 'التفسير متوقف حاليًا',
   sampleNoTafsir: 'لا يوجد تفسير متاح لهذه الآية الآن',

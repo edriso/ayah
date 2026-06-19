@@ -174,10 +174,13 @@ delivered entry but never advances) without moving on, so the same ayah and its
 review window repeat each day until done. `confirmRead` does the advance as an
 atomic compare-and-set on `currentEntryId` (idempotent: a double/stale tap is a
 harmless no-op), marks every still-unconfirmed `sent` row done, and is where the
-surah-completion milestone now fires. A repeating unread ayah is led by a gentle
+surah-completion milestone now fires. A repeating unread ayah is led — on the
+SCHEDULED daily push only (`deliverDueSubscribers`) — by a gentle
 "لم تُتمّ آيتك منذ N يوم" nudge + an encouragement ayah (`countUnreadDeliveriesBefore`,
 `pickQuranVirtue` in `reference/quran-virtues.ts`, `sendMissedDaysNudge`; the
-ayah text is read from the DB, never typed). `/next` lets a fast learner advance
+ayah text is read from the DB, never typed). It is deliberately NOT sent on a
+manual `/today` or a `/surah` reposition: there the reader is already engaged, so
+re-engagement copy would only repeat and intrude. `/next` lets a fast learner advance
 several ayat in one sitting; there is no "multiple ayat per day" setting. This
 serves both audiences with one model: a memorizer taps done when memorized, a
 tafsir reader when they have read/reflected — the wording is neutral.

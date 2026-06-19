@@ -149,7 +149,7 @@ export async function deliverAyahAudio(
     const cachedId = await getCachedAyahAudioId(surahNumber, numberInSurah, reciter.key);
     const audio =
       cachedId ?? ayahAudioUrl(config.audioBaseUrl, reciter.folder, surahNumber, numberInSurah);
-    const caption = `🎧 سورة ${surah.nameAr}، آية ${toArabicDigits(numberInSurah)} — ${reciter.nameAr}`;
+    const caption = `سورة ${surah.nameAr}، آية ${toArabicDigits(numberInSurah)} — ${reciter.nameAr}`;
     // Title + performer name the clip in Telegram's music player. Telegram
     // auto-advances through the chat's audio when one ends (the sender cannot
     // disable this), so a labeled track keeps the player and lock screen
