@@ -25,7 +25,6 @@ import {
   setOrder,
   commitDelivery,
   confirmRead,
-  getLatestUnconfirmedDelivery,
   resolveTargetEntry,
   getEntryById,
   getEntryForAyah,
@@ -826,7 +825,7 @@ bot.callbackQuery(DAYS_DONE, async (ctx) => {
     await ctx.answerCallbackQuery();
     return;
   }
-  await ctx.editMessageReplyMarkup(); // remove the keyboard
+  await ctx.editMessageReplyMarkup().catch(ignoreNotModified); // remove the keyboard
   await ctx.reply(COPY.daysUpdated(daysSummaryAr(sub.activeDays)));
   await ctx.answerCallbackQuery();
 });
@@ -842,7 +841,7 @@ bot.callbackQuery(new RegExp(`^${TIME_PICK_PREFIX}(\\d{2})(\\d{2})$`), async (ct
   const hour = Number(ctx.match![1]);
   const minute = Number(ctx.match![2]);
   await setDeliveryTime(sub.id, hour, minute);
-  await ctx.editMessageReplyMarkup(); // remove the keyboard
+  await ctx.editMessageReplyMarkup().catch(ignoreNotModified); // remove the keyboard
   await ctx.reply(COPY.timeUpdated(formatTimeAr(hour, minute), sub.timezone));
   await ctx.answerCallbackQuery();
 });
@@ -861,7 +860,7 @@ bot.callbackQuery(new RegExp(`^${TZ_PICK_PREFIX}(\\d+)$`), async (ctx) => {
     return;
   }
   await setTimezone(sub.id, tz);
-  await ctx.editMessageReplyMarkup(); // remove the keyboard
+  await ctx.editMessageReplyMarkup().catch(ignoreNotModified); // remove the keyboard
   await ctx.reply(COPY.tzUpdated(tz));
   await ctx.answerCallbackQuery();
 });
@@ -876,7 +875,7 @@ bot.callbackQuery(ONBOARD_DEFAULT, async (ctx) => {
     return;
   }
   const entry = await applyOrderAtStart(sub.id, KIDS_TRACK.key);
-  await ctx.editMessageReplyMarkup(); // remove the keyboard
+  await ctx.editMessageReplyMarkup().catch(ignoreNotModified); // remove the keyboard
   await ctx.answerCallbackQuery();
   await sendAfterReposition(ctx, sub, entry);
 });
@@ -884,7 +883,9 @@ bot.callbackQuery(ONBOARD_DEFAULT, async (ctx) => {
 // "Pick a starting surah": open the surah picker in place. Also reached from
 // the /settings shortcut button.
 bot.callbackQuery(ONBOARD_PICK, async (ctx) => {
-  await ctx.editMessageText(COPY.surahPrompt, { reply_markup: buildSurahKeyboard(SURAHS) });
+  await ctx
+    .editMessageText(COPY.surahPrompt, { reply_markup: buildSurahKeyboard(SURAHS) })
+    .catch(ignoreNotModified);
   await ctx.answerCallbackQuery();
 });
 
@@ -897,9 +898,11 @@ bot.callbackQuery(ONBOARD_MUSHAF, async (ctx) => {
     return;
   }
   await applyOrderAtStart(sub.id, MUSHAF_TRACK.key);
-  await ctx.editMessageText(`${COPY.orderSet(MUSHAF_TRACK.key)}\n\n${COPY.surahPrompt}`, {
-    reply_markup: buildSurahKeyboard(SURAHS),
-  });
+  await ctx
+    .editMessageText(`${COPY.orderSet(MUSHAF_TRACK.key)}\n\n${COPY.surahPrompt}`, {
+      reply_markup: buildSurahKeyboard(SURAHS),
+    })
+    .catch(ignoreNotModified);
   await ctx.answerCallbackQuery();
 });
 
@@ -933,7 +936,7 @@ bot.callbackQuery(new RegExp(`^${SURAH_PICK_PREFIX}(\\d+)$`), async (ctx) => {
     return;
   }
   await setStartPosition(sub.id, entry.id);
-  await ctx.editMessageReplyMarkup(); // remove the keyboard
+  await ctx.editMessageReplyMarkup().catch(ignoreNotModified); // remove the keyboard
   await ctx.answerCallbackQuery();
   await sendAfterReposition(ctx, sub, entry);
 });
@@ -953,7 +956,7 @@ bot.callbackQuery(new RegExp(`^${ORDER_PICK_PREFIX}(.+)$`), async (ctx) => {
   }
   const track = await getTrackByKey(key);
   if (track.id === sub.trackId) {
-    await ctx.editMessageReplyMarkup(); // remove the keyboard
+    await ctx.editMessageReplyMarkup().catch(ignoreNotModified); // remove the keyboard
     await ctx.reply(COPY.orderUnchanged(key));
     await ctx.answerCallbackQuery();
     return;
@@ -974,7 +977,7 @@ bot.callbackQuery(new RegExp(`^${ORDER_PICK_PREFIX}(.+)$`), async (ctx) => {
     newEntryId = carried?.id ?? (await getEntryAtPosition(track.id, 0))?.id ?? null;
   }
   await setOrder(sub.id, track.id, newEntryId);
-  await ctx.editMessageReplyMarkup(); // remove the keyboard
+  await ctx.editMessageReplyMarkup().catch(ignoreNotModified); // remove the keyboard
   await ctx.reply(COPY.orderSet(key));
   await ctx.answerCallbackQuery();
 });
@@ -1037,17 +1040,21 @@ export async function handleDone(
   sub: Subscriber,
   buttonEntryId?: number,
 ): Promise<void> {
-  const latest = await getLatestUnconfirmedDelivery(sub.id);
-  const current = latest ? await resolveTargetEntry(sub) : null;
+  const current = await resolveTargetEntry(sub);
+  // A stale button from an ayah already passed (its id is no longer current), or
+  // nothing to confirm (a finished non-looping track). Gentle no-op: drop the
+  // button so it cannot be tapped again, and reassure.
   if (!current || (buttonEntryId !== undefined && current.id !== buttonEntryId)) {
-    // Nothing pending, or a stale button from an ayah already passed. No-op:
-    // drop the button so it cannot be tapped again, and reassure.
     await ctx.editMessageReplyMarkup().catch(ignoreNotModified);
     await ctx.answerCallbackQuery({ text: COPY.alreadyDone });
     return;
   }
   // Confirm + reveal the next ayah, exactly as /next does, so the button and the
-  // command stay in lockstep. Drop the tapped button first (it is single-use).
+  // command stay in lockstep — including on a /next reveal's button, which rides
+  // an ayah with NO recorded delivery. The idempotency guard is confirmRead's
+  // atomic compare-and-set on the current entry (a stale/double tap matches no row
+  // and is a harmless no-op), not the presence of a pending delivery. Drop the
+  // tapped button first (it is single-use).
   await ctx.editMessageReplyMarkup().catch(ignoreNotModified);
   await ctx.answerCallbackQuery();
   await advanceAndShowNext(ctx, sub, new Date());

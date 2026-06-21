@@ -224,13 +224,15 @@ describe('handleDone (the "أتممتُها" button)', () => {
     );
   });
 
-  it('does nothing to advance when there is no unconfirmed delivery', async () => {
+  it('advances even with NO recorded delivery (a /next reveal button is not dead)', async () => {
+    // After a /next reveal the revealed ayah has no unconfirmed delivery, but its
+    // button must still advance — confirmRead's compare-and-set is the guard, not
+    // a pending delivery row. (Regression: the button used to silently no-op.)
     h.getLatestUnconfirmedDelivery.mockResolvedValue(null);
     const ctx = fakeCtx();
-    await handleDone(ctx as never, SUB, 7);
-    expect(h.confirmRead).not.toHaveBeenCalled();
-    expect(h.sendAyahNow).not.toHaveBeenCalled();
-    expect(ctx.editMessageReplyMarkup).toHaveBeenCalled(); // stale button removed
+    await handleDone(ctx as never, SUB, 7); // button pinned to the current entry
+    expect(h.confirmRead).toHaveBeenCalledWith(expect.objectContaining({ entry: ENTRY }));
+    expect(h.sendAyahNow).toHaveBeenCalledTimes(1); // the next ayah is revealed
   });
 
   it('a legacy bare button (no id) acts on the CURRENT visible ayah, not the stale delivered one', async () => {
