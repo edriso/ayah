@@ -196,15 +196,15 @@ export const COPY = {
     [
       'السلام عليكم ورحمة الله 🌿',
       '',
-      'مرحبًا بعودتك إلى بوت "آية". تصلك آية واحدة كل يوم بإذن الله — لحفظها أو لتدبّر تفسيرها — مع مراجعة لما سبق لتثبيته.',
+      'مرحبًا بعودتك إلى بوت "آية". تصلك آية واحدة كل يوم بإذن الله، لحفظها أو لتدبّر تفسيرها، ومعها مراجعة لما سبق لتثبيته.',
       '',
       '👈 لرؤية آيتك الآن اضغط /today',
-      'وإذا أتممتها فاضغط زر «أتممتُها — التالية» لتنتقل إلى ما بعدها. وما لم تؤكّد، تبقى آيتك بانتظارك ولا تفوتك واحدة.',
+      'وإذا أتممتها فاضغط زر «أتممتُها» لتنتقل إلى ما بعدها. وما لم تؤكّد، تبقى آيتك بانتظارك ولا تفوتك واحدة.',
       '',
       settings,
       '',
       'للانتقال إلى التالية الآن أو تدارُك يوم فائت: /next',
-      'لتغيير سورة البداية: /surah — ولتغيير الترتيب: /order',
+      'لتغيير سورة البداية اكتب /surah، والترتيب /order',
       'لعرض كل الأوامر: /help',
     ].join('\n'),
 
@@ -213,7 +213,7 @@ export const COPY = {
   welcomeNew: [
     'السلام عليكم ورحمة الله 🌿',
     '',
-    'مرحبًا بك في بوت "آية". يصحبك مع القرآن آيةً آية — لحفظها أو لتدبّر تفسيرها — بإرسال آية واحدة كل يوم، مع آيات سابقة من السورة نفسها للمراجعة. ولا تتقدّم آيتك حتى تضغط «أتممتُها»، فلا تفوتك واحدة.',
+    'مرحبًا بك في بوت "آية". يصحبك مع القرآن آيةً آية، لحفظها أو لتدبّر تفسيرها، بإرسال آية واحدة كل يوم، ومعها آيات سابقة من السورة نفسها للمراجعة. ولا تتقدّم آيتك حتى تضغط «أتممتُها»، فلا تفوتك واحدة.',
     '',
     'من أين تحب أن تبدأ؟ يمكنك البدء بالمنهج الافتراضي (من سورة الناس)، أو اختيار سورة تبدأ بها، أو الحفظ بترتيب المصحف (من الفاتحة).',
     '',
@@ -224,7 +224,7 @@ export const COPY = {
   // Arabic description. Examples that carry extra latin (a time, a timezone,
   // an argument) are wrapped with ltr() so they do not garble.
   help: [
-    'بوت "آية" يصحبك مع القرآن آيةً آية — لحفظها أو لتدبّر تفسيرها — بآية واحدة كل يوم مع آيات سابقة للمراجعة.',
+    'بوت "آية" يصحبك مع القرآن آيةً آية، لحفظها أو لتدبّر تفسيرها، بآية واحدة كل يوم ومعها آيات سابقة للمراجعة.',
     '',
     'الأوامر:',
     '/today: عرض آية اليوم الآن',
@@ -233,9 +233,9 @@ export const COPY = {
     '/order: اختيار الترتيب (منهج الحفظ من الناس، أو ترتيب المصحف من الفاتحة)',
     `/time: ضبط وقت الإرسال، مثل ${ltr('/time 07:00')}`,
     '/days: اختيار أيام الإرسال',
-    '/review: ضبط المراجعة — القريبة (مع آية اليوم) ومراجعة التثبيت (مما حفظتَه سابقًا، يوميًا)',
-    '/tafsir: التفسير — تشغيله أو إيقافه، واختيار التفسير وطريقة وصوله (نصًّا أو رابطًا) — يصل بصمت بعد الآية',
-    '/reciter: اختيار القارئ (تلاوة الآية صوتيًا) أو إيقافها — تصل بصمت بعد الآية',
+    '/review: ضبط المراجعة القريبة (مع آية اليوم) ومراجعة التثبيت (مما حفظتَه سابقًا، يوميًا)',
+    '/tafsir: التفسير: تشغيله أو إيقافه، واختيار التفسير وطريقة وصوله (نصًّا أو رابطًا)، ويصل بصمت بعد الآية',
+    '/reciter: اختيار القارئ (تلاوة الآية صوتيًا) أو إيقافها، وتصل بصمت بعد الآية',
     `/timezone: ضبط المنطقة الزمنية، مثل ${ltr('/timezone Africa/Cairo')}`,
     '/pause: أخذ راحة أو العودة منها (يبقى موضعك محفوظًا)',
     '/settings: عرض إعداداتك الحالية',
@@ -265,11 +265,11 @@ export const COPY = {
 
   // ── Done confirmation (the "أتممتُها" button) ─────────────────────
   // The button under each ayah, and the small silent prompt that carries it.
-  doneBtn: '✅ أتممتُها — التالية',
+  doneBtn: '✅ أتممتُها، التالية',
   confirmPrompt: 'إذا أتممتَ آية اليوم فاضغط الزر لأنتقل بك إلى التالية.',
   // Short acknowledgement sent just before the upcoming ayah, when a confirmed
   // done (the button or /next) advances the reader and reveals what comes next.
-  doneAck: 'بارك الله فيك ✓ — وهذه آيتك التالية، وتصلك أيضًا في موعدها بإذن الله:',
+  doneAck: 'بارك الله فيك ✓\nوهذه آيتك التالية، وتصلك أيضًا في موعدها بإذن الله:',
   // On-demand action buttons that ride the prompt when the tafseer / recitation
   // were NOT auto-sent with this showing (a /next reveal, or a /today re-show) —
   // so the reader can pull them with one tap. They act on the ayah being shown.
@@ -301,7 +301,7 @@ export const COPY = {
       'وهذه آيةٌ في فضل القرآن:',
       '',
       ayah.text,
-      `[سورة ${ayah.surahNameAr} — آية ${toArabicDigits(ayah.numberInSurah)}]`,
+      `[سورة ${ayah.surahNameAr}، آية ${toArabicDigits(ayah.numberInSurah)}]`,
     ].join('\n'),
 
   // Surah-completion milestone: shown the day a subscriber finishes a surah,
@@ -455,7 +455,7 @@ export const COPY = {
     '• تفسير السعدي: أوسع قليلًا',
     '• تفسير ابن كثير: مطوّل (تصلك بدايته مع رابط لإكماله)',
   ].join('\n'),
-  tafsirPreviewNote: 'مطوّل — بداية ورابط',
+  tafsirPreviewNote: 'مطوّل، بداية ورابط',
   tafsirSourceSet: (nameAr: string) => `تم اختيار ${nameAr} ✅`,
   // Label for the inline button that opens the full tafseer on the web (used in
   // link format and for a preview edition's "read the rest").

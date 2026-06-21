@@ -58,7 +58,7 @@ describe('formatTafseerMessages — inline edition, text format', () => {
   it('names the ayah number with the ornamented marker and the edition in the header', () => {
     const [msg] = inlineText(5, 'تفسير قصير.');
     expect(msg.text).toContain('﴿٥﴾'); // Arabic-Indic 5 inside the ﴿﴾ brackets
-    expect(msg.text.startsWith('📖 تفسير الآية ﴿٥﴾ — التفسير الميسر')).toBe(true);
+    expect(msg.text.startsWith('📖 تفسير الآية ﴿٥﴾ (التفسير الميسر)')).toBe(true);
   });
 
   it('shows whichever edition label it is given', () => {
@@ -69,12 +69,12 @@ describe('formatTafseerMessages — inline edition, text format', () => {
       format: 'text',
       text: 'المعنى.',
     });
-    expect(msg.text.startsWith('📖 تفسير الآية ﴿١﴾ — تفسير السعدي')).toBe(true);
+    expect(msg.text.startsWith('📖 تفسير الآية ﴿١﴾ (تفسير السعدي)')).toBe(true);
   });
 
   it('puts the tafseer text below the header, separated by a blank line', () => {
     const [msg] = inlineText(2, 'المعنى هنا.');
-    expect(msg.text).toBe('📖 تفسير الآية ﴿٢﴾ — التفسير الميسر\n\nالمعنى هنا.');
+    expect(msg.text).toBe('📖 تفسير الآية ﴿٢﴾ (التفسير الميسر)\n\nالمعنى هنا.');
   });
 
   it('trims surrounding whitespace from the tafseer text', () => {
@@ -123,7 +123,7 @@ describe('formatTafseerMessages — link format', () => {
       link: 'https://quran.com/112:3/tafsirs/ar-tafsir-ibn-kathir',
     });
     expect(msgs).toHaveLength(1);
-    expect(msgs[0].text).toContain('📖 تفسير الآية ﴿٣﴾ — تفسير ابن كثير');
+    expect(msgs[0].text).toContain('📖 تفسير الآية ﴿٣﴾ (تفسير ابن كثير)');
     expect(msgs[0].readMoreUrl).toBe('https://quran.com/112:3/tafsirs/ar-tafsir-ibn-kathir');
     // The raw URL is NOT baked into the text (it becomes a button).
     expect(msgs[0].text).not.toContain('https://');

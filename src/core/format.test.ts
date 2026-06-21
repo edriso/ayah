@@ -23,8 +23,8 @@ describe('formatRevisionMessages (distant/تثبيت review)', () => {
     ]);
     expect(msgs).toHaveLength(1);
     expect(msgs[0]).toContain('مراجعة للتثبيت');
-    expect(msgs[0]).toContain('قُلْ أَعُوذُ ﴿١﴾ — سورة الناس');
-    expect(msgs[0]).toContain('وَمِن شَرِّ حَاسِدٍ ﴿٥﴾ — سورة الفلق');
+    expect(msgs[0]).toContain('قُلْ أَعُوذُ ﴿١﴾ (سورة الناس)');
+    expect(msgs[0]).toContain('وَمِن شَرِّ حَاسِدٍ ﴿٥﴾ (سورة الفلق)');
   });
 
   it('splits across messages when the list is very long', () => {
@@ -70,7 +70,7 @@ describe('formatDailyMessages', () => {
     expect(msgs).toHaveLength(1);
     const m = msgs[0];
     // Title names today's new ayah up front (good notification preview).
-    expect(m).toContain('🌿 آية اليوم — سورة الإخلاص، آية ٤');
+    expect(m).toContain('🌿 آية اليوم: سورة الإخلاص، آية ٤');
     // Reading instruction is present when there are previous ayat.
     expect(m).toContain('راجع واحفظ بالترتيب حتى آية اليوم');
     // The passage reads ascending: ﴿١﴾ before ﴿٢﴾ before … before today ﴿٤﴾.
@@ -83,7 +83,7 @@ describe('formatDailyMessages', () => {
 
   it('uses a custom title label (the read-ahead reveal) in both the title and the instruction', () => {
     const msgs = formatDailyMessages({ surah, today, review }, 'الآية التالية');
-    expect(msgs[0]).toContain('🌿 الآية التالية — سورة الإخلاص، آية ٤');
+    expect(msgs[0]).toContain('🌿 الآية التالية: سورة الإخلاص، آية ٤');
     expect(msgs[0]).toContain('راجع واحفظ بالترتيب حتى الآية التالية');
     expect(msgs[0]).not.toContain('آية اليوم'); // never mislabeled as today's scheduled ayah
   });
@@ -91,7 +91,7 @@ describe('formatDailyMessages', () => {
   it('returns just today, unmarked and without the instruction, when no review', () => {
     const msgs = formatDailyMessages({ surah, today, review: [] });
     expect(msgs).toHaveLength(1);
-    expect(msgs[0]).toContain('🌿 آية اليوم — سورة الإخلاص، آية ٤');
+    expect(msgs[0]).toContain('🌿 آية اليوم: سورة الإخلاص، آية ٤');
     expect(msgs[0]).not.toContain('راجع واحفظ بالترتيب');
     expect(msgs[0]).not.toContain('👉');
   });

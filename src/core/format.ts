@@ -71,7 +71,7 @@ export interface DailyMessageInput {
  * Build the ordered list of messages to send for one delivery. The whole
  * delivery is a single passage in reading order:
  *
- *   🌿 آية اليوم — سورة … ، آية N      ← names today's new ayah
+ *   🌿 آية اليوم: سورة … ، آية N       ← names today's new ayah
  *   📖 اقرأ بالترتيب حتى آية اليوم:     ← only when there are previous ayat
  *   (basmala, when the passage starts at ayah 1)
  *   previous ayah, previous ayah, …    ← ascending
@@ -91,7 +91,7 @@ export function formatDailyMessages(input: DailyMessageInput, todayLabel = 'آي
   const { surah, today, review, basmala } = input;
 
   const hasReview = review.length > 0;
-  const title = `🌿 ${todayLabel} — سورة ${surah.nameAr}، آية ${toArabicDigits(today.numberInSurah)}`;
+  const title = `🌿 ${todayLabel}: سورة ${surah.nameAr}، آية ${toArabicDigits(today.numberInSurah)}`;
   // The reading instruction only makes sense when there is something to read
   // up to today; on a lone ayah we drop it (and the 👉, which would point at
   // the only line).
@@ -130,9 +130,9 @@ export interface RevisionAyah {
  */
 export function formatRevisionMessages(items: RevisionAyah[]): string[] {
   if (items.length === 0) return [];
-  const header = '🔄 مراجعة للتثبيت — آياتٌ سبق أن أتممتَها:';
+  const header = '🔄 مراجعة للتثبيت من آياتٍ سبق أن أتممتَها:';
   const lines = items.map(
-    (a) => `${a.text} ${ayahMarker(a.numberInSurah)} — سورة ${a.surahNameAr}`,
+    (a) => `${a.text} ${ayahMarker(a.numberInSurah)} (سورة ${a.surahNameAr})`,
   );
   const combined = `${header}\n\n${lines.join('\n')}`;
   if (combined.length <= SAFE_LIMIT) return [combined];

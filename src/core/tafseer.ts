@@ -123,7 +123,7 @@ export interface TafseerMessageInput {
  *     was needed but not supplied).
  */
 export function formatTafseerMessages(input: TafseerMessageInput): TafseerMessage[] {
-  const header = `📖 تفسير الآية ${ayahMarker(input.numberInSurah)} — ${input.editionLabel}`;
+  const header = `📖 تفسير الآية ${ayahMarker(input.numberInSurah)} (${input.editionLabel})`;
 
   // Link format: a short pointer + the button target. One message, no committed
   // text required.
