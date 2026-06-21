@@ -118,6 +118,16 @@ Telegram, not the CDN. The reciters and their CDN folders are reference data
 source still serves every reciter (the audio's "trusted resource" check, in
 place of a committed hashed file). See `deliverAyahAudio` in deliver.ts.
 
+The everyayah clips carry no embedded cover art, so a phone's player used to show
+a random cached image. Since we never store the audio bytes, we cannot embed a
+cover in the file; instead `deliverAyahAudio` attaches a small constant cover
+(`assets/audio-thumb.jpg`, committed and baked into the image) as Telegram's
+`thumbnail` — but ONLY on the first, fresh (URL) send. A re-send by cached
+file_id passes no thumbnail, because Telegram already holds that file's media and
+thumbnail from the first send (so already-cached ayat keep their original look
+until the `AyahAudio` row is cleared). A missing thumb file is a safe no-op (the
+audio still sends, just without the cover). Replace the placeholder to rebrand.
+
 Both audio and tafseer are tied to the DELIVERY, not to showing the ayah: they
 are sent only on a real `commitDelivery` returning 'sent', so each ayah's audio
 and tafseer arrive exactly once — the day that ayah is delivered. A later

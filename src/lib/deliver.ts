@@ -1,5 +1,7 @@
-import { InlineKeyboard } from 'grammy';
+import { InlineKeyboard, InputFile } from 'grammy';
 import type { Bot, Context } from 'grammy';
+import { existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import {
   ayahAudioUrl,
   dueLocalDate,
@@ -56,6 +58,16 @@ import { logger } from './logger';
  *  with the completion buttons in the same namespace (ayah:done:continue /
  *  pick / restart:<n>), which are not bare numbers. */
 export const READ_CONFIRM = 'ayah:done';
+
+/** A constant cover for the recitation clips. The everyayah audio files carry no
+ *  embedded art, so a phone's player would otherwise show a random cached image
+ *  (it once showed a kids-songs cover). We never store the audio bytes (one
+ *  reciter is ~1 GB), so we cannot embed art in the file; instead we attach this
+ *  small image as Telegram's thumbnail on the first (fresh) send. Resolved from
+ *  the committed asset; null if missing, so a misplaced file never breaks audio.
+ *  Replace assets/audio-thumb.jpg to rebrand. */
+const AUDIO_THUMB_PATH = fileURLToPath(new URL('../../assets/audio-thumb.jpg', import.meta.url));
+const AUDIO_THUMB: string | null = existsSync(AUDIO_THUMB_PATH) ? AUDIO_THUMB_PATH : null;
 
 /** Build the callback data for an ayah's "done" button (carries the entry id
  *  so stale taps are detectable). See READ_CONFIRM. */
@@ -188,6 +200,9 @@ export async function deliverAyahAudio(
       silent: true,
       title,
       performer: reciter.nameAr,
+      // Attach the cover only on a fresh send (cache miss): a cached file_id
+      // already carries the media+thumbnail Telegram stored on the first send.
+      ...(!cachedId && AUDIO_THUMB ? { thumbnail: new InputFile(AUDIO_THUMB) } : {}),
     });
     if (result === 'ok' && fileId && fileId !== cachedId) {
       await cacheAyahAudioId(surahNumber, numberInSurah, reciter.key, fileId);

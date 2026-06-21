@@ -324,6 +324,20 @@ describe('deliverDueSubscribers (read-gated scheduler)', () => {
     expect(opts).toMatchObject({ silent: true });
   });
 
+  it('attaches a cover thumbnail on a fresh (URL) send, but not when re-sent by file_id', async () => {
+    // Cache miss: fresh URL send carries the constant cover thumbnail.
+    await deliverDueSubscribers(bot, NOW);
+    expect(h.sendAudio.mock.calls[0][3].thumbnail).toBeDefined();
+
+    // Cache hit: re-sent by file_id, no thumbnail (Telegram already holds it).
+    h.sendAudio.mockClear();
+    h.getCachedAyahAudioId.mockResolvedValue('CACHED_FILE_ID');
+    await deliverDueSubscribers(bot, NOW);
+    const [, , audio, opts] = h.sendAudio.mock.calls[0];
+    expect(audio).toBe('CACHED_FILE_ID');
+    expect(opts.thumbnail).toBeUndefined();
+  });
+
   it('caches the file_id on the first send and reuses it after', async () => {
     await deliverDueSubscribers(bot, NOW);
     expect(h.cacheAyahAudioId).toHaveBeenCalledWith(112, 1, 'husary-muallim', 'AUDIO_FILE_ID');

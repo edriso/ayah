@@ -128,6 +128,10 @@ One subscriber failing is caught and never stops the others.
   call `ctx.answerCallbackQuery()` so the spinner clears.
 - Change the schema: edit `prisma/schema.prisma`, then `pnpm db:migrate` to make
   a migration, and commit the new folder under `prisma/migrations/`.
+- Rebrand the recitation cover: replace `assets/audio-thumb.jpg` (a small square
+  image, max 320x320). It is the thumbnail shown on the daily audio clip. Only
+  new (not-yet-cached) ayat pick it up; clear the `AyahAudio` table to refresh
+  the rest.
 
 ## 8. Golden rules you must not break
 
