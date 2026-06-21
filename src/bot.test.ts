@@ -78,6 +78,8 @@ vi.mock('./lib/deliver', () => ({
   sampleEntryFor: vi.fn(),
   tafseerReplyMarkup: () => undefined,
   READ_CONFIRM: 'ayah:done',
+  AYAH_TAFSEER_NOW: 'ayah:taf:now',
+  AYAH_AUDIO_NOW: 'ayah:rec:now',
 }));
 vi.mock('./scheduler', () => ({ runDeliveryOnce: vi.fn() }));
 vi.mock('./lib/logger', () => ({
@@ -259,8 +261,15 @@ describe('advanceAndShowNext (/next)', () => {
       expect.objectContaining({ id: 8 }),
       COPY.nextAyahLabel,
     );
-    // Its "done" button carries the NEXT entry's id (8), so the chain never skips.
-    expect(h.sendConfirmPrompt).toHaveBeenCalledWith(expect.anything(), 123n, 8);
+    // Its "done" button carries the NEXT entry's id (8), so the chain never
+    // skips, plus the on-demand action buttons (the reveal did not auto-send the
+    // tafseer/audio, so they are one tap away).
+    expect(h.sendConfirmPrompt).toHaveBeenCalledWith(
+      expect.anything(),
+      123n,
+      8,
+      expect.objectContaining({ tafseer: expect.any(Boolean), audio: expect.any(Boolean) }),
+    );
     // A non-milestone advance leads with the short acknowledgement.
     expect(ctx.reply).toHaveBeenCalledWith(COPY.doneAck);
   });

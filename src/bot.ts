@@ -27,6 +27,7 @@ import {
   confirmRead,
   getLatestUnconfirmedDelivery,
   resolveTargetEntry,
+  getEntryById,
   getEntryForAyah,
   getEntryAtPosition,
   countTrackEntries,
@@ -64,6 +65,9 @@ import {
   sendAyahNow,
   revisionMessagesFor,
   READ_CONFIRM,
+  AYAH_TAFSEER_NOW,
+  AYAH_AUDIO_NOW,
+  type PromptActions,
   type TodayView,
 } from './lib/deliver';
 import {
@@ -183,6 +187,14 @@ async function settingsText(sub: Subscriber): Promise<string> {
  *  the "no recitation" label for "none" (or any unknown key). */
 function reciterLabelFor(reciter: string): string {
   return reciterByKey(reciter)?.nameAr ?? COPY.reciterNoneLabel;
+}
+
+/** Which on-demand prompt buttons (tafseer / audio) a subscriber should see, by
+ *  their current settings: a tafseer button only when tafseer is on, an audio
+ *  button only when a reciter is chosen. Used for a showing that did not auto-send
+ *  them (a /next reveal, or a /today re-show), so the reader can pull them. */
+function promptActionsFor(sub: Subscriber): PromptActions {
+  return { tafseer: sub.tafseerEnabled, audio: reciterByKey(sub.reciter) !== undefined };
 }
 
 /** The Arabic name of a subscriber's tafseer edition (falls back to the default
@@ -395,8 +407,13 @@ export async function sendTodayView(
 
   // The "أتممتُها — التالية" button rides every shown ayah so the reader can
   // mark it done and advance — unless paused (a resting reader is not nudged on).
-  // It carries the shown entry's id, so a later tap names this exact ayah.
-  if (!sub.pausedAt && view.entry) await sendConfirmPrompt(bot, sub.telegramId, view.entry.id);
+  // It carries the shown entry's id, so a later tap names this exact ayah. On a
+  // fresh delivery the tafseer/audio were just auto-sent (no extra buttons); on a
+  // re-show or off-day peek they were not, so offer them one tap away.
+  if (!sub.pausedAt && view.entry) {
+    const actions = recorded ? undefined : promptActionsFor(sub);
+    await sendConfirmPrompt(bot, sub.telegramId, view.entry.id, actions);
+  }
 }
 
 /**
@@ -540,8 +557,12 @@ bot.command('today', async (ctx) => {
  */
 async function revealAyah(sub: Subscriber, entry: EntryWithAyah, label?: string): Promise<void> {
   const ok = await sendAyahNow(bot, sub, entry, label);
-  // The button carries this entry's id, so a tap names this exact ayah.
-  if (ok && !sub.pausedAt) await sendConfirmPrompt(bot, sub.telegramId, entry.id);
+  // The button carries this entry's id (so a tap names this exact ayah), plus the
+  // on-demand tafseer / listen buttons — the reveal does not auto-send those, so
+  // a reader racing ahead can still pull them for the ayah they are on.
+  if (ok && !sub.pausedAt) {
+    await sendConfirmPrompt(bot, sub.telegramId, entry.id, promptActionsFor(sub));
+  }
 }
 
 /**
@@ -1054,6 +1075,61 @@ bot.callbackQuery(READ_CONFIRM, async (ctx) => {
     return;
   }
   await handleDone(ctx, sub);
+});
+
+// ─── On-demand tafseer / recitation (the prompt's "📖 التفسير" / "🎧 الاستماع") ──
+// These ride the prompt on a showing that did NOT auto-send the tafseer/audio (a
+// /next reveal, or a /today re-show). The button carries the id of the ayah that
+// prompt shows, so it acts on THAT ayah (even one scrolled back to after
+// advancing). Pure: they send silently and never record a delivery or advance,
+// so they are safe to tap repeatedly.
+
+// Show the tafseer for the ayah this prompt displayed.
+bot.callbackQuery(new RegExp(`^${AYAH_TAFSEER_NOW}:(\\d+)$`), async (ctx) => {
+  const sub = await subscriberFor(ctx);
+  if (!sub) {
+    await ctx.answerCallbackQuery();
+    return;
+  }
+  if (!sub.tafseerEnabled) {
+    await ctx.answerCallbackQuery({ text: COPY.sampleTafsirOff });
+    return;
+  }
+  const entry = await getEntryById(Number(ctx.match![1]));
+  if (!entry) {
+    await ctx.answerCallbackQuery({ text: COPY.sampleNoAyah });
+    return;
+  }
+  const messages = await tafseerMessagesFor(entry, sub);
+  if (messages.length === 0) {
+    await ctx.answerCallbackQuery({ text: COPY.sampleNoTafsir });
+    return;
+  }
+  await ctx.answerCallbackQuery();
+  for (const m of messages) {
+    await ctx.reply(m.text, { disable_notification: true, reply_markup: tafseerReplyMarkup(m) });
+  }
+});
+
+// Play the recitation for the ayah this prompt displayed.
+bot.callbackQuery(new RegExp(`^${AYAH_AUDIO_NOW}:(\\d+)$`), async (ctx) => {
+  const sub = await subscriberFor(ctx);
+  if (!sub) {
+    await ctx.answerCallbackQuery();
+    return;
+  }
+  if (!reciterByKey(sub.reciter)) {
+    await ctx.answerCallbackQuery({ text: COPY.sampleReciterOff });
+    return;
+  }
+  const entry = await getEntryById(Number(ctx.match![1]));
+  if (!entry) {
+    await ctx.answerCallbackQuery({ text: COPY.sampleNoAyah });
+    return;
+  }
+  await ctx.answerCallbackQuery();
+  // Best-effort: deliverAyahAudio swallows its own send errors.
+  await deliverAyahAudio(bot, sub.telegramId, entry, sub.reciter);
 });
 
 // ─── Settings pause/resume toggle ───────────────────────────────────

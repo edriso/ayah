@@ -270,6 +270,11 @@ export const COPY = {
   // Short acknowledgement sent just before the upcoming ayah, when a confirmed
   // done (the button or /next) advances the reader and reveals what comes next.
   doneAck: 'بارك الله فيك ✓ — وهذه آيتك التالية، وتصلك أيضًا في موعدها بإذن الله:',
+  // On-demand action buttons that ride the prompt when the tafseer / recitation
+  // were NOT auto-sent with this showing (a /next reveal, or a /today re-show) —
+  // so the reader can pull them with one tap. They act on the ayah being shown.
+  showTafsirBtn: '📖 التفسير',
+  listenBtn: '🎧 الاستماع',
   // The title label for an ayah revealed AHEAD of its scheduled time (after a
   // confirmed done), so it is never mistaken for today's scheduled delivery.
   nextAyahLabel: 'الآية التالية',

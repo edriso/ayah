@@ -441,6 +441,30 @@ describe('the "done" button carries the shown ayah id', () => {
     expect(opts.disable_notification).toBe(true);
     // The inline button carries ayah:done:42, so a later tap names this ayah.
     expect(JSON.stringify(opts.reply_markup)).toContain('ayah:done:42');
+    // With no actions, ONLY the done button (no tafseer/audio buttons).
+    const data = JSON.stringify(opts.reply_markup);
+    expect(data).not.toContain('ayah:taf:now');
+    expect(data).not.toContain('ayah:rec:now');
+  });
+
+  it('offers the on-demand tafseer / listen buttons when actions are passed', async () => {
+    const sendMessage = vi.fn().mockResolvedValue(undefined);
+    const bot = { api: { sendMessage } } as never;
+    await sendConfirmPrompt(bot, 123n, 42, { tafseer: true, audio: true });
+    const data = JSON.stringify(sendMessage.mock.calls[0][2].reply_markup);
+    expect(data).toContain('ayah:done:42'); // done still there
+    // Each on-demand button is pinned to this entry (42), so a tap names this ayah.
+    expect(data).toContain('ayah:taf:now:42'); // tafseer one tap away
+    expect(data).toContain('ayah:rec:now:42'); // recitation one tap away
+  });
+
+  it('omits the tafseer button when tafseer is off, keeping only what is enabled', async () => {
+    const sendMessage = vi.fn().mockResolvedValue(undefined);
+    const bot = { api: { sendMessage } } as never;
+    await sendConfirmPrompt(bot, 123n, 42, { tafseer: false, audio: true });
+    const data = JSON.stringify(sendMessage.mock.calls[0][2].reply_markup);
+    expect(data).not.toContain('ayah:taf:now');
+    expect(data).toContain('ayah:rec:now');
   });
 });
 

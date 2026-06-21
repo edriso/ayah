@@ -63,6 +63,25 @@ export function readConfirmData(entryId: number): string {
   return `${READ_CONFIRM}:${entryId}`;
 }
 
+/** Callback-data PREFIXES for the on-demand action buttons that can ride the
+ *  prompt: show the tafseer for, or play the recitation of, a specific ayah. The
+ *  shown entry's id is appended ("ayah:taf:now:<entryId>") so a tap names the
+ *  exact ayah that prompt displayed — even one scrolled back to after advancing —
+ *  matching the id-pinned "done" button. They appear on a /next reveal or a
+ *  /today re-show, where the tafseer/audio were not auto-sent. Distinct from the
+ *  picker-confirmation "sample" buttons and the other "ayah:taf:*" /
+ *  "ayah:reciter*" callbacks, so they never clash. */
+export const AYAH_TAFSEER_NOW = 'ayah:taf:now';
+export const AYAH_AUDIO_NOW = 'ayah:rec:now';
+
+/** Whether to offer the on-demand tafseer / recitation buttons under a prompt.
+ *  Set for a showing that did NOT auto-send them (a reveal, or a re-show/peek);
+ *  omitted for a fresh delivery, which already sent whatever the reader enabled. */
+export interface PromptActions {
+  tafseer: boolean;
+  audio: boolean;
+}
+
 export interface DeliveryStats {
   due: number;
   sent: number;
@@ -192,10 +211,20 @@ export async function sendConfirmPrompt(
   bot: Bot<Context>,
   chatId: bigint,
   entryId: number,
+  actions?: PromptActions,
 ): Promise<void> {
   try {
+    const keyboard = new InlineKeyboard().text(COPY.doneBtn, readConfirmData(entryId));
+    // When the tafseer / recitation were not auto-sent with this showing, offer
+    // them one tap away (progressive disclosure) on a second row.
+    if (actions && (actions.tafseer || actions.audio)) {
+      keyboard.row();
+      // Pin each action to this entry, so a tap names the ayah this prompt shows.
+      if (actions.tafseer) keyboard.text(COPY.showTafsirBtn, `${AYAH_TAFSEER_NOW}:${entryId}`);
+      if (actions.audio) keyboard.text(COPY.listenBtn, `${AYAH_AUDIO_NOW}:${entryId}`);
+    }
     await bot.api.sendMessage(Number(chatId), COPY.confirmPrompt, {
-      reply_markup: new InlineKeyboard().text(COPY.doneBtn, readConfirmData(entryId)),
+      reply_markup: keyboard,
       disable_notification: true,
     });
   } catch (err) {

@@ -3,6 +3,10 @@
 Notes for anyone (human or AI) working in this repo. Easy English on
 purpose. The aim is that a junior developer can read this and be productive.
 
+New here? Start with `DEVELOPMENT.md` for a gentle, plain English tour (how to
+run it, the shape of the code, the read-gated idea, and how to make a change).
+This file is the deeper reference for whatever part you touch.
+
 ## What this is
 
 Ayah is a Telegram bot that walks each subscriber through the Quran one ayah a
@@ -194,7 +198,16 @@ The REVEAL is not a delivery: `sendAyahNow` sends only the passage (+ in-surah
 review), NOT the recitation audio or tafseer — those are tied to a real delivery
 (the scheduled push, or a `/today` that records the day), so a reader racing
 ahead with `/next` is not buried under a clip and a tafseer per ayah; they arrive
-with the ayah's actual delivery. A repeating unread ayah is led — on the
+with the ayah's actual delivery. Instead, when a showing did NOT auto-send them
+(a `/next` reveal, or a `/today` re-show / off-day peek), the prompt carries
+on-demand buttons one tap away — "📖 التفسير" (`AYAH_TAFSEER_NOW`) and
+"🎧 الاستماع" (`AYAH_AUDIO_NOW`), each pinned to that ayah's id like the done
+button, gated by the reader's settings (tafseer on, a reciter chosen). This is
+progressive disclosure: the message stays clean and the tafsir reader (or anyone)
+can pull the tafsir / recitation for the exact ayah shown. `promptActionsFor`
+decides which buttons appear; `sendConfirmPrompt(…, actions)` renders them; the
+handlers (in bot.ts) read the entry by its pinned id and send silently, recording
+nothing. A repeating unread ayah is led — on the
 SCHEDULED daily push only (`deliverDueSubscribers`) — by a gentle
 "لم تُتمّ آيتك منذ N يوم" nudge + an encouragement ayah (`countUnreadDeliveriesBefore`,
 `pickQuranVirtue` in `reference/quran-virtues.ts`, `sendMissedDaysNudge`; the
