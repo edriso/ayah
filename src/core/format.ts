@@ -81,16 +81,21 @@ export interface DailyMessageInput {
  * when it is too long (each within Telegram's limit). With review off, or on
  * the surah's first ayah, the passage is just today's ayah on its own.
  * Returns at least one message.
+ *
+ * `todayLabel` names the new ayah in the title (default "آية اليوم"). The
+ * read-gated reveal after a confirmed done (/next or the "أتممتُها" button)
+ * passes a forward-looking label ("الآية التالية") so the previewed ayah is
+ * never mislabeled as today's scheduled one.
  */
-export function formatDailyMessages(input: DailyMessageInput): string[] {
+export function formatDailyMessages(input: DailyMessageInput, todayLabel = 'آية اليوم'): string[] {
   const { surah, today, review, basmala } = input;
 
   const hasReview = review.length > 0;
-  const title = `🌿 آية اليوم — سورة ${surah.nameAr}، آية ${toArabicDigits(today.numberInSurah)}`;
+  const title = `🌿 ${todayLabel} — سورة ${surah.nameAr}، آية ${toArabicDigits(today.numberInSurah)}`;
   // The reading instruction only makes sense when there is something to read
   // up to today; on a lone ayah we drop it (and the 👉, which would point at
   // the only line).
-  const header = hasReview ? `${title}\n\n📖 راجع واحفظ بالترتيب حتى آية اليوم:` : title;
+  const header = hasReview ? `${title}\n\n📖 راجع واحفظ بالترتيب حتى ${todayLabel}:` : title;
 
   // The passage body, top to bottom: the surah opening (only when this passage
   // truly starts at ayah 1), the previous ayat ascending, then today's ayah

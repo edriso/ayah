@@ -395,7 +395,8 @@ export async function sendTodayView(
 
   // The "أتممتُها — التالية" button rides every shown ayah so the reader can
   // mark it done and advance — unless paused (a resting reader is not nudged on).
-  if (!sub.pausedAt && view.messages.length > 0) await sendConfirmPrompt(bot, sub.telegramId);
+  // It carries the shown entry's id, so a later tap names this exact ayah.
+  if (!sub.pausedAt && view.entry) await sendConfirmPrompt(bot, sub.telegramId, view.entry.id);
 }
 
 /**
@@ -531,9 +532,27 @@ bot.command('today', async (ctx) => {
 });
 
 /**
- * Mark the current ayah done and show the NEXT one now — for a reader who has
- * memorized (or finished reading the tafsir of) today's ayah and wants to go on,
- * or to catch up. Repeatable. Exported for testing; /next is a thin wrapper.
+ * Reveal an ayah right now — the read-ahead view after a confirmed done — with
+ * its own "أتممتُها" button (unless paused). `label` titles it; the upcoming
+ * ayah uses "الآية التالية" so it is never mistaken for today's scheduled
+ * delivery. No delivery is recorded and the audio/tafseer are not re-sent here
+ * (they ride the ayah's real delivery); see sendAyahNow.
+ */
+async function revealAyah(sub: Subscriber, entry: EntryWithAyah, label?: string): Promise<void> {
+  const ok = await sendAyahNow(bot, sub, entry, label);
+  // The button carries this entry's id, so a tap names this exact ayah.
+  if (ok && !sub.pausedAt) await sendConfirmPrompt(bot, sub.telegramId, entry.id);
+}
+
+/**
+ * Mark the current ayah done and REVEAL the next one now — the shared action
+ * behind both /next and the "أتممتُها — التالية" button, so the command and the
+ * button behave identically. A reader who has memorized (or finished reflecting
+ * on) the ayah they are looking at confirms it and immediately sees what comes
+ * next; tapping again walks forward one ayah at a time (catch up, or go faster).
+ * The revealed ayah carries its own button but records no delivery — its
+ * recitation and tafseer arrive with its real daily delivery. Exported for
+ * testing; /next is a thin wrapper.
  */
 export async function advanceAndShowNext(ctx: Context, sub: Subscriber, now: Date): Promise<void> {
   const current = await resolveTargetEntry(sub);
@@ -541,10 +560,10 @@ export async function advanceAndShowNext(ctx: Context, sub: Subscriber, now: Dat
     await ctx.reply(COPY.brokenOrNotStarted);
     return;
   }
-  // Not started yet: begin at the first ayah (no advance, no skip).
+  // Not started yet: begin at the first ayah (no advance, no skip) and show it.
   if (sub.currentEntryId === null) {
     await setStartPosition(sub.id, current.id);
-    await sendAyahNow(bot, sub, current);
+    await revealAyah(sub, current);
     return;
   }
   const [totalEntries, track] = await Promise.all([
@@ -559,23 +578,34 @@ export async function advanceAndShowNext(ctx: Context, sub: Subscriber, now: Dat
     loops,
     now,
   });
-  // If the ayah just confirmed finished a surah, celebrate the milestone first.
-  if (result === 'advanced') {
-    const completion = await buildCompletionMessage(current, totalEntries, loops, sub.id);
-    if (completion) await ctx.reply(completion.text, { reply_markup: completion.keyboard });
+  // A concurrent confirm already advanced us: show wherever we are now so a
+  // follow-up never skips an unseen ayah.
+  if (result === 'already') {
+    const live = await resolveTargetEntry(sub);
+    if (live) await revealAyah(sub, live);
+    else await ctx.reply(COPY.trackFinished);
+    return;
   }
-  // Then show the next ayah from the new position.
+  // Advanced. Work out the new position and what (if anything) was completed.
+  const completion = await buildCompletionMessage(current, totalEntries, loops, sub.id);
   const nextPosition = advancePosition(current.position, totalEntries, loops);
   const nextEntry =
     nextPosition === null ? null : await getEntryAtPosition(current.trackId, nextPosition);
+  // End of a non-looping track (the shipped tracks both loop, so rare): the
+  // milestone is the khatma message, with nothing more to reveal.
   if (!nextEntry) {
-    await ctx.reply(COPY.trackFinished);
+    if (completion) await ctx.reply(completion.text, { reply_markup: completion.keyboard });
+    else await ctx.reply(COPY.trackFinished);
     return;
   }
-  await sendAyahNow(bot, sub, nextEntry);
+  // Lead with the milestone (it announces the next surah, so it replaces the
+  // plain ack) or a short ack, then reveal the upcoming ayah right under it.
+  if (completion) await ctx.reply(completion.text, { reply_markup: completion.keyboard });
+  else await ctx.reply(COPY.doneAck);
+  await revealAyah(sub, nextEntry, COPY.nextAyahLabel);
 }
 
-// /next: mark the current ayah done and show the next now (go faster / catch
+// /next: mark the current ayah done and reveal the next now (go faster / catch
 // up). Each /next advances exactly one ayah; the daily "أتممتُها" button does
 // the same, one tap at a time.
 bot.command('next', async (ctx) => {
@@ -972,47 +1002,51 @@ bot.callbackQuery(new RegExp(`^${COMPLETE_RESTART_PREFIX}(\\d+)$`), async (ctx) 
 
 // ─── "أتممتُها — التالية" (mark done) button ─────────────────────────
 //
-// Advances one ayah and marks the day(s) done. It confirms the CURRENT (visible)
-// ayah — `resolveTargetEntry`, which is what the reader is looking at, even after
-// a /surah jump on an already-delivered day — gated by there being an unconfirmed
-// delivery so it stays idempotent: confirmRead's compare-and-set advances once,
-// and a double/stale tap (or no pending delivery) is a harmless no-op. The tapped
-// button is removed in place. If the confirmed ayah finished a surah, the
-// milestone follows.
-export async function handleDone(ctx: Context, sub: Subscriber): Promise<void> {
+// The button is the same action as /next: confirm the CURRENT (visible) ayah,
+// advance, and reveal the next one (see advanceAndShowNext). It is idempotent:
+//   - The button carries the id of the ayah it was sent for. A tap whose id no
+//     longer matches the current position is a STALE button from an ayah already
+//     passed — a gentle no-op (we just drop it and toast), so old buttons left in
+//     the chat can never advance the reader a second time.
+//   - With no unconfirmed delivery there is nothing to confirm — also a no-op.
+// `buttonEntryId` is undefined only for legacy bare "ayah:done" buttons sent
+// before the id was added; those fall back to acting on the current ayah.
+export async function handleDone(
+  ctx: Context,
+  sub: Subscriber,
+  buttonEntryId?: number,
+): Promise<void> {
   const latest = await getLatestUnconfirmedDelivery(sub.id);
-  const entry = latest ? await resolveTargetEntry(sub) : null;
-  if (!entry) {
-    // Nothing pending to confirm (already done, or no delivery yet). No-op.
+  const current = latest ? await resolveTargetEntry(sub) : null;
+  if (!current || (buttonEntryId !== undefined && current.id !== buttonEntryId)) {
+    // Nothing pending, or a stale button from an ayah already passed. No-op:
+    // drop the button so it cannot be tapped again, and reassure.
     await ctx.editMessageReplyMarkup().catch(ignoreNotModified);
     await ctx.answerCallbackQuery({ text: COPY.alreadyDone });
     return;
   }
-  const [totalEntries, track] = await Promise.all([
-    countTrackEntries(sub.trackId),
-    getTrackById(sub.trackId),
-  ]);
-  const loops = track?.loops ?? false;
-  const result = await confirmRead({
-    subscriberId: sub.id,
-    entry,
-    totalEntries,
-    loops,
-    now: new Date(),
-  });
-  await ctx.editMessageReplyMarkup().catch(ignoreNotModified); // drop the button either way
-  if (result === 'advanced') {
-    await ctx.answerCallbackQuery();
-    // When this ayah finished a surah, the milestone IS the acknowledgment
-    // (don't also send the generic "moved on" line). Otherwise, confirm plainly.
-    const completion = await buildCompletionMessage(entry, totalEntries, loops, sub.id);
-    if (completion) await ctx.reply(completion.text, { reply_markup: completion.keyboard });
-    else await ctx.reply(COPY.doneConfirmed);
-  } else {
-    await ctx.answerCallbackQuery({ text: COPY.alreadyDone });
-  }
+  // Confirm + reveal the next ayah, exactly as /next does, so the button and the
+  // command stay in lockstep. Drop the tapped button first (it is single-use).
+  await ctx.editMessageReplyMarkup().catch(ignoreNotModified);
+  await ctx.answerCallbackQuery();
+  await advanceAndShowNext(ctx, sub, new Date());
 }
 
+// New "done" buttons carry the shown ayah's id ("ayah:done:<entryId>"): confirm
+// only while that ayah is still current (so a stale tap is a no-op). The numeric
+// suffix never collides with the completion buttons (ayah:done:continue / pick /
+// restart:<n>), which are matched by their own handlers above.
+bot.callbackQuery(new RegExp(`^${READ_CONFIRM}:(\\d+)$`), async (ctx) => {
+  const sub = await subscriberFor(ctx);
+  if (!sub) {
+    await ctx.answerCallbackQuery();
+    return;
+  }
+  await handleDone(ctx, sub, Number(ctx.match![1]));
+});
+
+// Legacy bare "ayah:done" buttons (sent before the id was added) still work:
+// they act on the current ayah.
 bot.callbackQuery(READ_CONFIRM, async (ctx) => {
   const sub = await subscriberFor(ctx);
   if (!sub) {

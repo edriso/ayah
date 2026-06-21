@@ -85,6 +85,9 @@ import {
   sampleEntryFor,
   revisionMessagesFor,
   sendMissedDaysNudge,
+  sendAyahNow,
+  sendConfirmPrompt,
+  readConfirmData,
 } from './deliver';
 import { COPY } from './copy';
 
@@ -388,6 +391,56 @@ describe('deliverDueSubscribers (read-gated scheduler)', () => {
     expect(
       api.sendMessage.mock.calls.find((c) => String(c[1]).includes('مراجعة للتثبيت')),
     ).toBeUndefined();
+  });
+});
+
+describe('sendAyahNow (read-ahead reveal: passage only, no audio/tafseer)', () => {
+  const bot = { api: { sendMessage: vi.fn() } } as never;
+
+  beforeEach(() => h.sendMessages.mockResolvedValue('ok'));
+
+  it('sends only the passage, titled with the given label, and no recitation or tafseer', async () => {
+    const ok = await sendAyahNow(
+      bot,
+      { telegramId: 123n, reviewCount: 0 } as never,
+      ENTRY as never,
+      COPY.nextAyahLabel,
+    );
+    expect(ok).toBe(true);
+    // The passage went out once, titled with the forward-looking label.
+    expect(h.sendMessages).toHaveBeenCalledTimes(1);
+    const [, , messages] = h.sendMessages.mock.calls[0];
+    expect(messages[0]).toContain(`🌿 ${COPY.nextAyahLabel}`);
+    // Audio and tafseer ride a real delivery, not a mere reveal.
+    expect(h.sendAudio).not.toHaveBeenCalled();
+    expect(h.getTafseerText).not.toHaveBeenCalled();
+  });
+
+  it('returns false when the passage could not be sent', async () => {
+    h.sendMessages.mockResolvedValue('failed');
+    const ok = await sendAyahNow(
+      bot,
+      { telegramId: 123n, reviewCount: 0 } as never,
+      ENTRY as never,
+    );
+    expect(ok).toBe(false);
+  });
+});
+
+describe('the "done" button carries the shown ayah id', () => {
+  it('readConfirmData builds ayah:done:<entryId>', () => {
+    expect(readConfirmData(42)).toBe('ayah:done:42');
+  });
+
+  it('sendConfirmPrompt sends a silent prompt whose button names the entry', async () => {
+    const sendMessage = vi.fn().mockResolvedValue(undefined);
+    const bot = { api: { sendMessage } } as never;
+    await sendConfirmPrompt(bot, 123n, 42);
+    const [, text, opts] = sendMessage.mock.calls[0];
+    expect(text).toBe(COPY.confirmPrompt);
+    expect(opts.disable_notification).toBe(true);
+    // The inline button carries ayah:done:42, so a later tap names this ayah.
+    expect(JSON.stringify(opts.reply_markup)).toContain('ayah:done:42');
   });
 });
 

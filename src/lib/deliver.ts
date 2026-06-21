@@ -48,11 +48,20 @@ import { buildCompletionKeyboard } from './completion-keyboard';
 import { COPY } from './copy';
 import { logger } from './logger';
 
-/** Callback data for the "أتممتُها — التالية" button under each ayah. A bare
- *  constant: the latest unconfirmed delivery is the source of truth and the
- *  confirm is an idempotent compare-and-set, so every day's button carries the
- *  same data and old buttons are harmless. */
+/** Callback-data PREFIX for the "أتممتُها — التالية" button under each ayah.
+ *  The shown entry's id is appended ("ayah:done:<entryId>") so a tap names the
+ *  exact ayah it was sent for: handleDone confirms only while that entry is
+ *  still the reader's current position, and a tap on an old button (from an
+ *  ayah already passed) is a gentle no-op. The numeric suffix never collides
+ *  with the completion buttons in the same namespace (ayah:done:continue /
+ *  pick / restart:<n>), which are not bare numbers. */
 export const READ_CONFIRM = 'ayah:done';
+
+/** Build the callback data for an ayah's "done" button (carries the entry id
+ *  so stale taps are detectable). See READ_CONFIRM. */
+export function readConfirmData(entryId: number): string {
+  return `${READ_CONFIRM}:${entryId}`;
+}
 
 export interface DeliveryStats {
   due: number;
@@ -172,15 +181,21 @@ export async function deliverAyahAudio(
 // ─── Read confirmation (the "أتممتُها — التالية" button) ─────────────
 
 /**
- * Send the small "done?" prompt that carries the "أتممتُها — التالية" button.
- * Silent (disable_notification): the ayah itself is the day's one notification,
- * and this is its quiet companion. Best effort — a failure is logged and
- * swallowed; the reader can still advance with /next.
+ * Send the small "done?" prompt that carries the "أتممتُها — التالية" button
+ * for `entryId` (the ayah being shown). Silent (disable_notification): the ayah
+ * itself is the day's one notification, and this is its quiet companion. Best
+ * effort — a failure is logged and swallowed; the reader can still advance with
+ * /next. The button names the entry so a tap on a stale (already-passed) button
+ * is a no-op (see handleDone).
  */
-export async function sendConfirmPrompt(bot: Bot<Context>, chatId: bigint): Promise<void> {
+export async function sendConfirmPrompt(
+  bot: Bot<Context>,
+  chatId: bigint,
+  entryId: number,
+): Promise<void> {
   try {
     await bot.api.sendMessage(Number(chatId), COPY.confirmPrompt, {
-      reply_markup: new InlineKeyboard().text(COPY.doneBtn, READ_CONFIRM),
+      reply_markup: new InlineKeyboard().text(COPY.doneBtn, readConfirmData(entryId)),
       disable_notification: true,
     });
   } catch (err) {
@@ -258,39 +273,30 @@ export async function revisionMessagesFor(
 export interface AyahNowSubscriber {
   telegramId: bigint;
   reviewCount: number;
-  reciter: string;
-  tafseerEnabled: boolean;
-  tafseerEdition: string;
-  tafseerFormat: string;
 }
 
 /**
- * Send a subscriber's CURRENT ayah right now (its message + review, the
- * recitation, and the tafseer), WITHOUT recording a delivery or attaching the
- * done button. Used by /next, which has already advanced the position and is
- * just showing the new ayah for a reader who wants to go further. Returns false
- * when the ayah text could not be sent.
+ * Show an ayah (its passage + in-surah review) right now, WITHOUT recording a
+ * delivery. Used to REVEAL the upcoming ayah after a confirmed done (/next or
+ * the "أتممتُها" button): the position has already advanced, and this is just
+ * the read-ahead view. `todayLabel` titles it (e.g. "الآية التالية") so it is
+ * not mistaken for today's scheduled delivery.
+ *
+ * It deliberately does NOT send the recitation audio or the tafseer: those are
+ * tied to a real delivery (the scheduled push, or a /today that records the
+ * day), not to merely showing an ayah — so a reader who races ahead with /next
+ * is not buried under a clip and a tafseer for every ayah. They arrive with the
+ * ayah's actual delivery. Returns false when the ayah text could not be sent.
  */
 export async function sendAyahNow(
   bot: Bot<Context>,
   sub: AyahNowSubscriber,
   entry: EntryWithAyah,
+  todayLabel?: string,
 ): Promise<boolean> {
   const content = await buildDailyContent(entry, sub.reviewCount);
-  const result = await sendMessages(bot, sub.telegramId, formatDailyMessages(content));
-  if (result !== 'ok') return false;
-  await deliverAyahAudio(bot, sub.telegramId, entry, sub.reciter);
-  try {
-    for (const msg of await tafseerMessagesFor(entry, sub)) {
-      await bot.api.sendMessage(Number(sub.telegramId), msg.text, {
-        disable_notification: true,
-        reply_markup: tafseerReplyMarkup(msg),
-      });
-    }
-  } catch (err) {
-    logger.error('Failed to send tafseer (/next)', { error: String(err) });
-  }
-  return true;
+  const result = await sendMessages(bot, sub.telegramId, formatDailyMessages(content, todayLabel));
+  return result === 'ok';
 }
 
 /**
@@ -388,9 +394,10 @@ export async function deliverDueSubscribers(
           logger.error('Failed to send revision', { id: sub.id, error: String(err) });
         }
 
-        // Finally, the "أتممتُها — التالية" button. Tapping it advances and (if
-        // this ayah finished a surah) fires the milestone — see handleDone.
-        await sendConfirmPrompt(bot, sub.telegramId);
+        // Finally, the "أتممتُها — التالية" button for THIS ayah. Tapping it
+        // advances, reveals the next ayah, and (if this ayah finished a surah)
+        // fires the milestone — see handleDone.
+        await sendConfirmPrompt(bot, sub.telegramId, entry.id);
       } else stats.skipped++; // a race delivered the same day first
     } catch (err) {
       stats.failed++;
@@ -428,6 +435,10 @@ export interface TodayView {
   record: { scheduledFor: string; entry: EntryWithAyah } | null;
   /** True when today's ayah was already delivered and this is a re-show. */
   alreadyDelivered: boolean;
+  /** The LIVE current entry being shown (null when none could be prepared). The
+   *  caller uses its id for the "done" button so a later tap names this exact
+   *  ayah. Unlike `record.entry` it is present even on a re-show or off-day peek. */
+  entry: EntryWithAyah | null;
 }
 
 /** Fields buildTodayView needs off a subscriber row. */
@@ -461,7 +472,13 @@ export async function buildTodayView(sub: TodaySubscriber, now: Date): Promise<T
 
   const entry = await resolveTargetEntry(sub);
   if (!entry)
-    return { messages: [], tafseer: [], record: null, alreadyDelivered: delivered !== null };
+    return {
+      messages: [],
+      tafseer: [],
+      record: null,
+      alreadyDelivered: delivered !== null,
+      entry: null,
+    };
   const content = await buildDailyContent(entry, sub.reviewCount);
   const messages = formatDailyMessages(content);
 
@@ -474,7 +491,7 @@ export async function buildTodayView(sub: TodaySubscriber, now: Date): Promise<T
   // Tafseer accompanies a real (recorded) delivery only, so each ayah's tafseer
   // arrives once — the day it is actually delivered (here, or at the next send).
   const tafseer = record ? await tafseerMessagesFor(entry, sub) : [];
-  return { messages, tafseer, record, alreadyDelivered: delivered !== null };
+  return { messages, tafseer, record, alreadyDelivered: delivered !== null, entry };
 }
 
 /**

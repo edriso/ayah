@@ -85,6 +85,7 @@ vi.mock('./lib/logger', () => ({
 }));
 
 import { sendAfterReposition, handleDone, advanceAndShowNext } from './bot';
+import { COPY } from './lib/copy';
 
 const ENTRY = {
   id: 7,
@@ -138,6 +139,7 @@ describe('sendAfterReposition (read-gated: records, no advance)', () => {
       tafseer: [{ text: '📖 تفسير الآية ﴿١﴾ — التفسير الميسر\n\nالمعنى' }],
       record: { scheduledFor: '2026-06-01', entry: ENTRY },
       alreadyDelivered: false,
+      entry: ENTRY,
     });
     const ctx = fakeCtx();
     await sendAfterReposition(ctx as never, SUB, ENTRY);
@@ -168,6 +170,7 @@ describe('sendAfterReposition (read-gated: records, no advance)', () => {
       tafseer: [],
       record: null,
       alreadyDelivered: true,
+      entry: ENTRY,
     });
     const ctx = fakeCtx();
     await sendAfterReposition(ctx as never, SUB, ENTRY);
@@ -184,6 +187,7 @@ describe('sendAfterReposition (read-gated: records, no advance)', () => {
       tafseer: [{ text: '📖 ...' }],
       record: { scheduledFor: '2026-06-01', entry: ENTRY },
       alreadyDelivered: false,
+      entry: ENTRY,
     });
     await sendAfterReposition(fakeCtx() as never, SUB, ENTRY);
     expect(h.deliverAyahAudio).not.toHaveBeenCalled();
@@ -191,60 +195,83 @@ describe('sendAfterReposition (read-gated: records, no advance)', () => {
 });
 
 describe('handleDone (the "أتممتُها" button)', () => {
-  it('advances one ayah and acknowledges; fires the milestone when a surah is finished', async () => {
+  it('confirms the current ayah, reveals the next, and fires the milestone when a surah is finished', async () => {
     h.buildCompletionMessage.mockResolvedValue({ text: 'أتممت سورة الناس 🌿', keyboard: {} });
     const ctx = fakeCtx();
-    await handleDone(ctx as never, SUB);
+    // The button carries the current ayah's id, so it is not stale.
+    await handleDone(ctx as never, SUB, 7);
 
     expect(h.confirmRead).toHaveBeenCalledWith(
       expect.objectContaining({ subscriberId: 1, entry: ENTRY, totalEntries: 6236, loops: true }),
     );
-    expect(ctx.editMessageReplyMarkup).toHaveBeenCalled(); // button removed
-    expect(ctx.reply).toHaveBeenCalled(); // doneConfirmed + the milestone
+    expect(ctx.editMessageReplyMarkup).toHaveBeenCalled(); // tapped button removed
     expect(h.buildCompletionMessage).toHaveBeenCalled();
+    expect(ctx.reply).toHaveBeenCalled(); // the milestone
+    expect(h.sendAyahNow).toHaveBeenCalledTimes(1); // the next ayah is revealed
   });
 
-  it('is a gentle no-op on a stale/double tap (confirmRead reports "already")', async () => {
-    h.confirmRead.mockResolvedValue('already');
+  it('is a gentle no-op on a STALE button (its id is no longer the current ayah)', async () => {
+    // current is entry 7; the tapped button was for entry 3 (an ayah passed).
     const ctx = fakeCtx();
-    await handleDone(ctx as never, SUB);
+    await handleDone(ctx as never, SUB, 3);
+    expect(h.confirmRead).not.toHaveBeenCalled(); // nothing advanced
+    expect(h.sendAyahNow).not.toHaveBeenCalled(); // nothing revealed
+    expect(ctx.editMessageReplyMarkup).toHaveBeenCalled(); // stale button removed
     expect(ctx.answerCallbackQuery).toHaveBeenCalledWith(
       expect.objectContaining({ text: expect.any(String) }),
     );
-    // No "advanced" confirmation reply, and no milestone.
-    expect(h.buildCompletionMessage).not.toHaveBeenCalled();
   });
 
   it('does nothing to advance when there is no unconfirmed delivery', async () => {
     h.getLatestUnconfirmedDelivery.mockResolvedValue(null);
     const ctx = fakeCtx();
-    await handleDone(ctx as never, SUB);
+    await handleDone(ctx as never, SUB, 7);
     expect(h.confirmRead).not.toHaveBeenCalled();
+    expect(h.sendAyahNow).not.toHaveBeenCalled();
     expect(ctx.editMessageReplyMarkup).toHaveBeenCalled(); // stale button removed
   });
 
-  it('advances the CURRENT (visible) ayah, not the stale delivered one (after a /surah jump)', async () => {
+  it('a legacy bare button (no id) acts on the CURRENT visible ayah, not the stale delivered one', async () => {
     // A jump on an already-delivered day: the latest unconfirmed delivery still
-    // points to the morning ayah, but currentEntryId is the just-set one. The
-    // button must advance what the reader is looking at (resolveTargetEntry).
+    // points to the morning ayah, but currentEntryId is the just-set one. A
+    // legacy button (no id) must advance what the reader is looking at.
     const CURRENT = { ...(ENTRY as object), id: 42, position: 9 } as never;
     h.getLatestUnconfirmedDelivery.mockResolvedValue({ trackEntryId: 7 }); // the stale morning one
     h.resolveTargetEntry.mockResolvedValue(CURRENT); // what they are viewing now
-    await handleDone(fakeCtx() as never, SUB);
+    await handleDone(fakeCtx() as never, SUB); // no buttonEntryId (legacy)
     expect(h.confirmRead).toHaveBeenCalledWith(expect.objectContaining({ entry: CURRENT }));
   });
 });
 
 describe('advanceAndShowNext (/next)', () => {
-  it('confirms the current ayah and shows the next one', async () => {
+  it('confirms the current ayah and reveals the next one (labeled, with its own button)', async () => {
     const ctx = fakeCtx();
     await advanceAndShowNext(ctx as never, SUB, new Date());
     expect(h.confirmRead).toHaveBeenCalledWith(
       expect.objectContaining({ subscriberId: 1, entry: ENTRY }),
     );
-    // The next entry (position 4) is shown via sendAyahNow.
+    // The next entry (position 4, id 8) is revealed via sendAyahNow, titled with
+    // the forward-looking label so it is not mistaken for today's scheduled ayah.
     expect(h.getEntryAtPosition).toHaveBeenCalledWith(1, 4);
-    expect(h.sendAyahNow).toHaveBeenCalledTimes(1);
+    expect(h.sendAyahNow).toHaveBeenCalledWith(
+      expect.anything(),
+      SUB,
+      expect.objectContaining({ id: 8 }),
+      COPY.nextAyahLabel,
+    );
+    // Its "done" button carries the NEXT entry's id (8), so the chain never skips.
+    expect(h.sendConfirmPrompt).toHaveBeenCalledWith(expect.anything(), 123n, 8);
+    // A non-milestone advance leads with the short acknowledgement.
+    expect(ctx.reply).toHaveBeenCalledWith(COPY.doneAck);
+  });
+
+  it('does NOT skip: the revealed ayah is the immediate next, not the one after', async () => {
+    // The reported bug: done advanced silently to N+1, then /next skipped to N+2.
+    // Now the reveal is always the immediate next (position 4 from position 3).
+    const ctx = fakeCtx();
+    await advanceAndShowNext(ctx as never, SUB, new Date());
+    expect(h.getEntryAtPosition).toHaveBeenCalledTimes(1);
+    expect(h.getEntryAtPosition).toHaveBeenCalledWith(1, 4); // 3 -> 4, never 3 -> 5
   });
 
   it('just starts (no advance) when the subscriber has not started yet', async () => {
@@ -254,5 +281,6 @@ describe('advanceAndShowNext (/next)', () => {
     expect(h.setStartPosition).toHaveBeenCalledWith(1, 7); // begins at the current entry
     expect(h.confirmRead).not.toHaveBeenCalled(); // nothing to advance past
     expect(h.sendAyahNow).toHaveBeenCalledTimes(1);
+    expect(ctx.reply).not.toHaveBeenCalledWith(COPY.doneAck); // no "advanced" ack on a fresh start
   });
 });

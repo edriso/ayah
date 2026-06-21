@@ -267,11 +267,15 @@ export const COPY = {
   // The button under each ayah, and the small silent prompt that carries it.
   doneBtn: '✅ أتممتُها — التالية',
   confirmPrompt: 'إذا أتممتَ آية اليوم فاضغط الزر لأنتقل بك إلى التالية.',
-  // After a confirmed done advances the reader. Mentions /next for going on now.
-  doneConfirmed: `بارك الله فيك ✓\nانتقلتَ إلى الآية التالية، تصلك في موعدها، أو اكتب ${ltr('/next')} لقراءتها الآن.`,
-  // Toast when an old/already-used "done" button is tapped (the position has
-  // already moved on). Gentle: their progress is recorded, nothing is wrong.
-  alreadyDone: 'سجّلنا إتمامك ✓',
+  // Short acknowledgement sent just before the upcoming ayah, when a confirmed
+  // done (the button or /next) advances the reader and reveals what comes next.
+  doneAck: 'بارك الله فيك ✓ — وهذه آيتك التالية، وتصلك أيضًا في موعدها بإذن الله:',
+  // The title label for an ayah revealed AHEAD of its scheduled time (after a
+  // confirmed done), so it is never mistaken for today's scheduled delivery.
+  nextAyahLabel: 'الآية التالية',
+  // Toast when an old/stale "done" button is tapped — one from an earlier ayah
+  // the reader has already moved past. Gentle: their progress is fine.
+  alreadyDone: 'تجاوزتَ هذه الآية بالفعل ✓',
   // Shown by /next when a non-looping track has no next ayah (the shipped tracks
   // both loop, so in practice this is never reached).
   trackFinished: 'بارك الله فيك، لقد أتممت ختمتك كاملة 🌿',
@@ -303,7 +307,7 @@ export const COPY = {
     nextNameAr
       ? [
           `🎉 أتممت سورة ${completedNameAr}! تقبّل الله منك وبارك فيك 🌿`,
-          `وتبدأ سورة ${nextNameAr} في موعدك القادم بإذن الله.`,
+          `وهذه أول آيات سورة ${nextNameAr}:`,
         ].join('\n')
       : `🎉 أتممت سورة ${completedNameAr}! تقبّل الله منك وبارك فيك 🌿`,
   // The bigger milestone: the whole Quran. nextNameAr is the surah a looping
@@ -313,14 +317,15 @@ export const COPY = {
       ? [
           '🎉🎉 ما شاء الله تبارك الله! لقد أتممت القرآن كاملًا 🌿',
           'نسأل الله أن يجعله حجةً لك لا عليك، وأن يرزقك تثبيته.',
-          `وتبدأ ختمة جديدة مع سورة ${nextNameAr} في موعدك القادم بإذن الله.`,
+          `وتبدأ ختمة جديدة، وهذه أول آيات سورة ${nextNameAr}:`,
         ].join('\n')
       : [
           '🎉🎉 ما شاء الله تبارك الله! لقد أتممت القرآن كاملًا 🌿',
           'نسأل الله أن يجعله حجةً لك لا عليك، وأن يرزقك تثبيته.',
         ].join('\n'),
-  // Completion keyboard button labels.
-  completionContinueBtn: 'متابعة للسورة التالية ▶️',
+  // Completion keyboard button labels. There is no "continue" button anymore
+  // (the next surah's first ayah is revealed under the milestone); completion
+  // ContinueAck is kept only for taps on milestone messages sent before that.
   completionPickBtn: '📖 اختر سورة أخرى',
   completionRestartBtn: '🔁 أعد هذه السورة',
   completionContinueAck: 'سنكمل في موعدك القادم بإذن الله ✅',
@@ -339,8 +344,11 @@ export const COPY = {
 
   brokenOrNotStarted: 'لم نتمكن من تجهيز آية لك الآن، حاول لاحقًا بإذن الله.',
 
-  // Shown above the ayah when /today re-shows an ayah already delivered today.
-  todayAlready: 'وصلتك آية اليوم من قبل، وهذه هي:',
+  // Shown above the ayah when /today is used after today's ayah already went
+  // out. It re-shows the LIVE current ayah (which is the next one if the reader
+  // has since marked today's done), so the wording points at "your current
+  // ayah" rather than claiming this is exactly what was delivered.
+  todayAlready: 'وصلتك آية اليوم من قبل. وهذه آيتك الحالية:',
 
   // The command sits at the end of its line so it stays tappable and the
   // right-to-left text does not reorder around it.

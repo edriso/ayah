@@ -166,15 +166,35 @@ consistent with `/today` and the silent-companion design.)
 
 ### Read-gated (advance only when done)
 
-The position advances ONLY when the subscriber marks the ayah done — the
-"أتممتُها — التالية" button under every ayah (`READ_CONFIRM` → `handleDone`), or
-`/next` (`advanceAndShowNext`). The daily send, `/today`, and repositioning all
-RECORD the day (`commitDelivery`, which now sets `currentEntryId` to the
-delivered entry but never advances) without moving on, so the same ayah and its
-review window repeat each day until done. `confirmRead` does the advance as an
-atomic compare-and-set on `currentEntryId` (idempotent: a double/stale tap is a
-harmless no-op), marks every still-unconfirmed `sent` row done, and is where the
-surah-completion milestone now fires. A repeating unread ayah is led — on the
+The position advances ONLY when the subscriber marks the ayah done. The
+"أتممتُها — التالية" button under every ayah (`READ_CONFIRM` → `handleDone`) and
+`/next` are now the SAME action: both call `advanceAndShowNext`, which confirms
+the current ayah, advances, and immediately REVEALS the next ayah (titled
+"الآية التالية" via `formatDailyMessages`'s label arg) with its own done button.
+Tapping again walks forward one ayah at a time (catch up, or go faster). This
+unification fixes the old skip where the button advanced silently and a following
+`/next` then confirmed the unseen ayah and jumped a second one. The daily send,
+`/today`, and repositioning RECORD the day (`commitDelivery`, which sets
+`currentEntryId` to the delivered entry but never advances) without moving on, so
+the same ayah and its review window repeat each day until done. `confirmRead`
+does the advance as an atomic compare-and-set on `currentEntryId` (idempotent: a
+concurrent/stale advance is a harmless no-op), marks every still-unconfirmed
+`sent` row done, and is where the surah-completion milestone fires.
+
+The "done" button carries the id of the ayah it was sent for
+(`ayah:done:<entryId>`, built by `readConfirmData`; `sendConfirmPrompt` embeds
+it). `handleDone` confirms only while that id is still the current position, so a
+tap on a STALE button (one left in the chat from an ayah already passed) is a
+gentle no-op — old buttons can never advance the reader a second time. A legacy
+bare `ayah:done` (sent before the id was added) falls back to acting on the
+current ayah. The numeric suffix never collides with the completion buttons in
+the same namespace (`ayah:done:continue` / `pick` / `restart:<n>`).
+
+The REVEAL is not a delivery: `sendAyahNow` sends only the passage (+ in-surah
+review), NOT the recitation audio or tafseer — those are tied to a real delivery
+(the scheduled push, or a `/today` that records the day), so a reader racing
+ahead with `/next` is not buried under a clip and a tafseer per ayah; they arrive
+with the ayah's actual delivery. A repeating unread ayah is led — on the
 SCHEDULED daily push only (`deliverDueSubscribers`) — by a gentle
 "لم تُتمّ آيتك منذ N يوم" nudge + an encouragement ayah (`countUnreadDeliveriesBefore`,
 `pickQuranVirtue` in `reference/quran-virtues.ts`, `sendMissedDaysNudge`; the
@@ -192,13 +212,17 @@ the scheduler skips it. The same `unique(subscriber, scheduledFor)` lock keeps
 it to one ayah per local day across every entry point. The "أتممتُها" button is
 silent (the ayah is the day's one notification) and rides every shown ayah.
 
-When the CONFIRMED ayah is the LAST of its surah, `handleDone` (and `/next`)
-follows it with a milestone (`surahCompletionFor` decides, `buildCompletionMessage`
-renders) naming the next surah, with buttons to continue / pick another / repeat
-the surah. Finishing the track's final entry says "you completed the whole
-Quran" instead — but only once a full track's worth of ayat has actually been
-delivered (a `DeliveryLog` count), so picking a surah near the order's end can't
-trigger a false khatma. A long surah
+When the CONFIRMED ayah is the LAST of its surah, the advance (`handleDone` /
+`/next`) leads with a milestone (`surahCompletionFor` decides,
+`buildCompletionMessage` renders) naming the next surah, THEN reveals that
+surah's first ayah right under it (so a follow-up advance never skips it). The
+milestone keyboard has just "pick another" / "repeat this surah" — there is no
+"continue" button, since continuing has already happened (the
+`COMPLETE_CONTINUE` handler is kept only to answer taps on milestone messages
+sent before this change). Finishing the track's final entry says "you completed
+the whole Quran" instead — but only once a full track's worth of ayat has
+actually been delivered (a `DeliveryLog` count), so picking a surah near the
+order's end can't trigger a false khatma. A long surah
 is never re-sent from its start: the review block is always the last N ayat
 (`reviewCount`, 0–20), clamped so it never crosses into the previous surah. The
 formatter (`src/core/format.ts`) splits a passage across messages at ayah

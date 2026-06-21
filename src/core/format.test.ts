@@ -81,6 +81,13 @@ describe('formatDailyMessages', () => {
     expect(m).not.toContain('﴿٣﴾ 👉');
   });
 
+  it('uses a custom title label (the read-ahead reveal) in both the title and the instruction', () => {
+    const msgs = formatDailyMessages({ surah, today, review }, 'الآية التالية');
+    expect(msgs[0]).toContain('🌿 الآية التالية — سورة الإخلاص، آية ٤');
+    expect(msgs[0]).toContain('راجع واحفظ بالترتيب حتى الآية التالية');
+    expect(msgs[0]).not.toContain('آية اليوم'); // never mislabeled as today's scheduled ayah
+  });
+
   it('returns just today, unmarked and without the instruction, when no review', () => {
     const msgs = formatDailyMessages({ surah, today, review: [] });
     expect(msgs).toHaveLength(1);
