@@ -1401,20 +1401,21 @@ async function setBotProfile() {
   // The visible menu stays small. /break and /resume still work as aliases
   // (the /pause toggle replaces them in the menu), and the picker buttons
   // cover the rest, matching the "fewer commands" goal.
-  // Order = the natural daily flow, grouped for clarity: read now -> what/where
-  // you memorize -> review & its silent companions (tafsir, recitation) ->
-  // schedule -> account.
+  // Order = the natural daily flow, grouped for clarity, and aligned with the
+  // tilawah bot so the two feel the same: read now -> what/where you memorize ->
+  // review knob -> how the ayah reaches you, in DELIVERY order (hear then
+  // understand: reciter before tafsir) -> schedule -> account.
   await bot.api.setMyCommands([
     // Read now
     { command: 'today', description: 'عرض آية اليوم' },
     { command: 'next', description: 'إتمام الآية والانتقال إلى التالية' },
-    // What / where
+    // What / where you memorize
     { command: 'surah', description: 'اختيار سورة البداية' },
     { command: 'order', description: 'اختيار الترتيب (المصحف أو الحفظ)' },
-    // Review and its silent companions
     { command: 'review', description: 'المراجعة: القريبة ومراجعة التثبيت' },
-    { command: 'tafsir', description: 'التفسير: تشغيله واختياره وطريقة وصوله' },
+    // How it reaches you (silent companions, in delivery order: hear -> understand)
     { command: 'reciter', description: 'اختيار القارئ (التلاوة الصوتية)' },
+    { command: 'tafsir', description: 'التفسير: تشغيله واختياره وطريقة وصوله' },
     // Schedule
     { command: 'time', description: 'ضبط وقت الإرسال' },
     { command: 'days', description: 'اختيار أيام الإرسال' },
