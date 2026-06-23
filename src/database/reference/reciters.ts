@@ -21,14 +21,25 @@ export interface Reciter {
 
 // Order = display order in the picker. The default (the kids teacher style)
 // comes first, then the classic teaching and beloved voices, then the modern.
+//
+// Every reciter here is حفص عن عاصم (the riwayah the seeded Quran text matches).
+// Growing this list is cheap and safe: pick a complete everyayah folder, confirm
+// it with `pnpm verify:audio`, and add a row. Adding a NON-Hafs riwayah (Warsh,
+// Qaloon) is NOT a row here — it needs its own verified text + numbering + audio;
+// see docs/RIWAYAT.md.
 export const RECITERS: readonly Reciter[] = [
   { key: 'husary-muallim', nameAr: 'الحصري (المعلِّم)', folder: 'Husary_Muallim_128kbps' },
   { key: 'husary', nameAr: 'محمود خليل الحصري', folder: 'Husary_128kbps' },
   { key: 'minshawi', nameAr: 'محمد صديق المنشاوي', folder: 'Minshawy_Murattal_128kbps' },
   { key: 'abdulbasit', nameAr: 'عبد الباسط عبد الصمد', folder: 'Abdul_Basit_Murattal_192kbps' },
+  { key: 'ayyoub', nameAr: 'محمد أيوب', folder: 'Muhammad_Ayyoub_128kbps' },
+  { key: 'hudhaify', nameAr: 'علي الحذيفي', folder: 'Hudhaify_128kbps' },
+  { key: 'sudais', nameAr: 'عبد الرحمن السديس', folder: 'Abdurrahmaan_As-Sudais_192kbps' },
+  { key: 'shuraim', nameAr: 'سعود الشريم', folder: 'Saood_ash-Shuraym_128kbps' },
   { key: 'alafasy', nameAr: 'مشاري العفاسي', folder: 'Alafasy_128kbps' },
   { key: 'maher', nameAr: 'ماهر المعيقلي', folder: 'Maher_AlMuaiqly_64kbps' },
   { key: 'ghamdi', nameAr: 'سعد الغامدي', folder: 'Ghamadi_40kbps' },
+  { key: 'dussary', nameAr: 'ياسر الدوسري', folder: 'Yasser_Ad-Dussary_128kbps' },
 ] as const;
 
 /** The reciter a brand-new subscriber gets: الحصري المعلِّم (the repeat-after-me

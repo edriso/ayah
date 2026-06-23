@@ -42,7 +42,7 @@ developer can work on it.
   source, so when an edition's note is a cross-reference ("سبق الكلام عليها في
   أول سورة البقرة") the full text is one tap away — we never substitute or invent
   it. The audio defaults to الحصري المعلِّم (the kids teacher style) and
-  the reciter is picked with `/reciter` (seven reciters, or off). Both are sent
+  the reciter is picked with `/reciter` (twelve reciters, or off). Both are sent
   once, the day the ayah is delivered, and always match the reader's current
   settings: change the reciter and the next ayah is recited in the new voice;
   switch the tafseer edition and the next one follows; jump to another surah and

@@ -13,8 +13,8 @@ describe('reciters reference data', () => {
     }
   });
 
-  it('offers exactly the seven chosen reciters', () => {
-    expect(RECITERS).toHaveLength(7);
+  it('offers the chosen reciters (all Hafs, the seeded text riwayah)', () => {
+    expect(RECITERS).toHaveLength(12);
   });
 
   it('uses a real reciter as the default (matches the schema default)', () => {

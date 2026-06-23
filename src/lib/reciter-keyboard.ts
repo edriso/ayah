@@ -3,7 +3,7 @@ import { InlineKeyboard } from 'grammy';
 // Callback data for the reciter picker. A pick carries the reciter key (or the
 // "none" sentinel): "ayah:reciter:husary-muallim", "ayah:reciter:none". Keys
 // are short, well under Telegram's 64-byte callback limit, and the whole
-// keyboard (7 reciters + none) is far under the 100-button cap, so it needs no
+// keyboard (the reciter list + none) is far under the 100-button cap, so needs no
 // pagination.
 export const RECITER_PICK_PREFIX = 'ayah:reciter:';
 

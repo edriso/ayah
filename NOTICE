@@ -68,7 +68,9 @@ Recitation audio
 The daily ayah's optional recitation audio is the standard Mushaf Murattal
 recordings of the reciters listed in src/database/reference/reciters.ts
 (among them Mahmoud Khalil Al-Husary, Mohamed Siddiq Al-Minshawi, Abdul Basit
-Abdul Samad, Mishary Rashid Alafasy, Maher Al-Muaiqly, and Saad Al-Ghamdi). The
+Abdul Samad, Muhammad Ayyoub, Ali Al-Hudhaify, Abdurrahman As-Sudais, Saud
+Ash-Shuraim, Mishary Rashid Alafasy, Maher Al-Muaiqly, Saad Al-Ghamdi, and
+Yasser Ad-Dussary), all in the Hafs an Asim riwayah. The
 audio is fetched per ayah from everyayah.com and is NOT stored or redistributed
 in this repository; only the URLs are referenced, and Telegram caches each clip
 after the first send. Each recording remains the work and property of its
