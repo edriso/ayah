@@ -51,7 +51,29 @@ beforeEach(() => {
   h.logCreate.mockResolvedValue({});
   h.logUpdateMany.mockResolvedValue({ count: 1 });
   h.entryFindUnique.mockResolvedValue({ id: 8 });
-  h.transaction.mockImplementation((ops: Promise<unknown>[]) => Promise.all(ops));
+  // $transaction takes two shapes here: the array form (commitDelivery) runs the
+  // batched writes together; the interactive callback form (confirmRead) is given
+  // a `tx` client. Map `tx` back to the same mocks so call assertions still see
+  // every write, whichever form the code under test used.
+  h.transaction.mockImplementation((arg: unknown) => {
+    if (typeof arg === 'function') {
+      return (arg as (tx: unknown) => unknown)({
+        subscriber: { update: h.subUpdate, updateMany: h.subUpdateMany },
+        deliveryLog: {
+          create: h.logCreate,
+          updateMany: h.logUpdateMany,
+          findFirst: h.logFindFirst,
+          count: h.logCount,
+        },
+        trackEntry: {
+          findUnique: h.entryFindUnique,
+          findMany: h.entryFindMany,
+          count: h.entryCount,
+        },
+      });
+    }
+    return Promise.all(arg as Promise<unknown>[]);
+  });
 });
 
 describe('commitDelivery (records, no advance)', () => {
@@ -139,6 +161,11 @@ describe('confirmRead (the done compare-and-set)', () => {
       where: { subscriberId: 1, status: 'sent', confirmedAt: null },
       data: { confirmedAt: NOW },
     });
+    // Atomicity: the advance and the "mark done" run inside one interactive
+    // transaction (a callback), so a crash can never leave the position moved
+    // while the delivery stays unconfirmed.
+    expect(h.transaction).toHaveBeenCalledTimes(1);
+    expect(typeof h.transaction.mock.calls[0][0]).toBe('function');
   });
 
   it('is a no-op ("already") when the position already moved (stale/double tap)', async () => {

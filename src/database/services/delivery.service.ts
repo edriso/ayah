@@ -270,21 +270,32 @@ export async function confirmRead(params: {
   const now = params.now ?? new Date();
 
   const nextPosition = advancePosition(entry.position, totalEntries, loops);
+  // Resolve the next entry BEFORE the transaction: TrackEntry is read-only
+  // seeded data, so this read needs no transactional guard and keeps the
+  // transaction (which takes a row lock) as short as possible.
   const nextEntry =
     nextPosition === null ? null : await getEntryAtPosition(entry.trackId, nextPosition);
 
-  const moved = await prisma.subscriber.updateMany({
-    where: { id: subscriberId, currentEntryId: entry.id },
-    data: { currentEntryId: nextEntry ? nextEntry.id : null },
+  // The advance and the "mark done" must be one atomic unit: if only the first
+  // landed, the position would move while the just-completed delivery stayed
+  // unconfirmed — a spurious "days since last review" nudge and a gap in the
+  // distant-review corpus until the next confirm self-healed it. An interactive
+  // transaction lets us keep the compare-and-set's conditional (return 'already'
+  // when no row matched) between the two writes.
+  return prisma.$transaction(async (tx) => {
+    const moved = await tx.subscriber.updateMany({
+      where: { id: subscriberId, currentEntryId: entry.id },
+      data: { currentEntryId: nextEntry ? nextEntry.id : null },
+    });
+    if (moved.count === 0) return 'already';
+    // Mark this and any earlier unread days done, so "days since last review"
+    // resets. (All unconfirmed rows are for the same current ayah.)
+    await tx.deliveryLog.updateMany({
+      where: { subscriberId, status: 'sent', confirmedAt: null },
+      data: { confirmedAt: now },
+    });
+    return 'advanced';
   });
-  if (moved.count === 0) return 'already';
-  // Mark this and any earlier unread days done, so "days since last review"
-  // resets. (All unconfirmed rows are for the same current ayah.)
-  await prisma.deliveryLog.updateMany({
-    where: { subscriberId, status: 'sent', confirmedAt: null },
-    data: { confirmedAt: now },
-  });
-  return 'advanced';
 }
 
 /**
