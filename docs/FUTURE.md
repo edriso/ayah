@@ -120,9 +120,17 @@ A subscriber memorizing in a riwayah other than Hafs wants both the text and a
 reciter in that riwayah. This is a large data effort, not a quick add: the
 seeded Quran text is Hafs, so another riwayah means a second verified text
 edition (its own per-ayah rows and count oracle) AND a matching audio set, plus
-a per-subscriber riwayah choice that selects both. Worth doing, but it is its
-own project — keep it separate from the Hafs reciter list (which is easy to grow
-within `reference/reciters.ts` when a trusted everyayah folder exists).
+a per-subscriber riwayah choice that selects both.
+
+**Researched and designed in full: see `docs/RIWAYAT.md`.** The short version:
+the text is verifiable (KFGQPC + KSU as a second oracle) and a staged plan +
+data model exist, but the gating blocker is **per-ayah audio** — no non-Hafs
+riwayah (and none of the specific Asbahani reciters the thread asked for) has
+complete per-ayah audio from a trusted CDN in the bot's `SSSAAA.mp3` format yet.
+
+What DID ship from this feedback: the **Hafs** reciter list grew (now 12 voices
+in `reference/reciters.ts`, each confirmed by `pnpm verify:audio`), since that is
+the part deliverable with no new data pipeline.
 
 ## A native app (App Store / Play Store) — from community feedback
 
