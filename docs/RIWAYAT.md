@@ -77,6 +77,16 @@ the key before the tafseer lookup. (a) is the honest MVP.
   محمد عبدالكريم) DO exist — but only as **per-surah / multi-segment** files on
   archive.org and mp3quran.net, with **no ayah-level timing/segmentation**.
 
+  Re-confirmed 2026-06-24 (per رقية's follow-up naming these three):
+  - **محمد إرشاد مربعي** — Asbahani, but split **by surah only** (≈88 files,
+    IslamWeb qid 2421). No per-ayah split.
+  - **أحمد ديبان** — his complete Quran on mp3quran.net is Warsh **via Al-Azraq**,
+    not Asbahani (the route رقية asked for); no per-ayah Asbahani set found.
+  - **محمد عبدالكريم** — complete 604-page Asbahani set exists, but that is a
+    **per-PAGE** set, not per-ayah. It therefore fits the **tilawah** bot (page
+    unit), where it has SHIPPED, and still does not unlock ayah (ayah needs
+    per-ayah). See tilawah `docs/RIWAYAT.md`.
+
 Conclusion: **no non-Hafs riwayah currently has complete, per-ayah audio
 reachable from a trusted CDN in the bot's format.** The text half is solvable;
 the audio half is the gate. Unlocking it means either:
