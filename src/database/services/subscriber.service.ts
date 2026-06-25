@@ -190,3 +190,32 @@ export function markBlocked(subscriberId: number) {
     data: { blockedAt: new Date() },
   });
 }
+
+/** A snapshot of the subscriber base for the admin /admin_stats command. */
+export interface SubscriberStats {
+  total: number;
+  // Reachable AND not on a break: the people who actually get a daily ayah.
+  active: number;
+  paused: number;
+  blocked: number;
+  // Have received at least one ayah (startedAt set), vs joined but never sent to.
+  started: number;
+}
+
+/**
+ * Count the subscriber base for the admin stats command. The four states are
+ * not mutually exclusive in the schema (a paused user could also be blocked),
+ * so we count each condition independently and define "active" as the send
+ * loops do: reachable (blockedAt IS NULL) and not on a break (pausedAt IS NULL).
+ * Five small COUNT queries, run together; nothing is read into memory.
+ */
+export async function subscriberStats(): Promise<SubscriberStats> {
+  const [total, active, paused, blocked, started] = await Promise.all([
+    prisma.subscriber.count(),
+    prisma.subscriber.count({ where: { pausedAt: null, blockedAt: null } }),
+    prisma.subscriber.count({ where: { pausedAt: { not: null } } }),
+    prisma.subscriber.count({ where: { blockedAt: { not: null } } }),
+    prisma.subscriber.count({ where: { startedAt: { not: null } } }),
+  ]);
+  return { total, active, paused, blocked, started };
+}

@@ -46,6 +46,11 @@ Set these env vars on the host (see the single root `.env.example`):
 With `ADMIN_TELEGRAM_ID` set, message the bot privately (these are never shown
 in the public command menu, and only your id may run them):
 
+- `/admin_help`  list every admin command (they are hidden from the public
+  menu, so this is the one place to see them all).
+- `/admin_stats`  a snapshot of the subscriber base: total, active (reachable
+  and not on a break — the people who actually get a daily ayah), paused,
+  blocked, and how many have received at least one ayah.
 - `/admin_health`  uptime and current time, a quick "is it up?".
 - `/admin_send`  fire the delivery batch by hand (the exact path the cron
   uses); a smoke test right after a deploy.

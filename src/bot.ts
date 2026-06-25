@@ -21,6 +21,7 @@ import {
   setReciter,
   pauseSubscriber,
   resumeSubscriber,
+  subscriberStats,
   setStartPosition,
   setOrder,
   commitDelivery,
@@ -1391,6 +1392,44 @@ bot.command('admin_preview', async (ctx) => {
     return;
   }
   for (const message of messages) await ctx.reply(message);
+});
+
+// /admin_stats: a snapshot of the subscriber base. "Active" mirrors the send
+// loops (reachable and not on a break), so it is the count that actually gets
+// a daily ayah. The states are not mutually exclusive (a paused user can also
+// be blocked); each line counts its own condition. See subscriberStats.
+bot.command('admin_stats', async (ctx) => {
+  if (!isAdmin(ctx)) return;
+  const s = await subscriberStats();
+  await ctx.reply(
+    [
+      'Subscribers',
+      '-----------',
+      `Total:   ${s.total}`,
+      `Active:  ${s.active}  (reachable, not on a break)`,
+      `Paused:  ${s.paused}`,
+      `Blocked: ${s.blocked}`,
+      `Started: ${s.started}  (got at least one ayah)`,
+    ].join('\n'),
+  );
+});
+
+// /admin_help: list every admin command. Admin commands are deliberately kept
+// out of the public /setMyCommands menu, so this is the one place the admin can
+// see them all. Keep this list in step with the handlers above.
+bot.command('admin_help', async (ctx) => {
+  if (!isAdmin(ctx)) return;
+  await ctx.reply(
+    [
+      'Admin commands',
+      '--------------',
+      '/admin_help - show this list',
+      '/admin_stats - subscriber counts (total/active/paused/blocked/started)',
+      '/admin_health - uptime and server time',
+      '/admin_send - run the delivery batch now (the cron path)',
+      '/admin_preview <surah> <ayah> [review] - render an ayah without sending to anyone',
+    ].join('\n'),
+  );
 });
 
 bot.catch((err) => {
