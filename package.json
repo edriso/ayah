@@ -47,30 +47,31 @@
   },
   "dependencies": {
     "@grammyjs/auto-retry": "^2.0.2",
-    "@prisma/adapter-mariadb": "^7.8.0",
-    "@prisma/client": "^7.8.0",
+    "@prisma/adapter-mariadb": "^7.10.0",
+    "@prisma/client": "^7.10.0",
     "dotenv": "^17.4.2",
-    "grammy": "^1.42.0",
-    "mariadb": "^3.5.2",
-    "node-cron": "^4.2.1",
+    "grammy": "^1.46.0",
+    "mariadb": "^3.5.4",
+    "node-cron": "^4.6.0",
     "telegram-bot-kit": "github:edriso/telegram-bot-kit#v0.1.2",
-    "tsx": "^4.19.2"
+    "tsx": "^4.23.13"
   },
   "devDependencies": {
-    "@eslint/js": "^9.18.0",
-    "@types/node": "^22.10.5",
+    "@eslint/js": "^9.39.5",
+    "@types/node": "^22.20.1",
     "@types/node-cron": "^3.0.11",
     "cross-env": "^7.0.3",
-    "eslint": "^9.18.0",
+    "eslint": "^9.39.5",
     "eslint-config-prettier": "^10.1.8",
-    "eslint-plugin-prettier": "^5.5.5",
+    "eslint-plugin-prettier": "^5.5.6",
     "husky": "^9.1.7",
-    "lint-staged": "^16.1.2",
-    "prettier": "^3.8.3",
-    "prisma": "^7.8.0",
-    "typescript": "^5.7.3",
-    "typescript-eslint": "^8.59.4",
-    "vitest": "^4.1.7"
+    "lint-staged": "^16.4.0",
+    "prettier": "^3.9.6",
+    "prisma": "^7.10.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.69.0",
+    "vitest": "^4.1.11",
+    "vite": "^8.1.3"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
@@ -78,6 +79,11 @@
       "@prisma/engines",
       "esbuild",
       "prisma"
-    ]
+    ],
+    "overrides": {
+      "deepmerge-ts": "^8.0.0",
+      "mariadb@3": "^3.5.4",
+      "mysql2": "^3.23.1"
+    }
   }
 }

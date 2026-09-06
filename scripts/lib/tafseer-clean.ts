@@ -15,12 +15,18 @@ export function htmlToText(html: string): string {
     .replace(/<br\s*\/?>/gi, ' ')
     .replace(/<\/(p|div|h[1-6]|li)>/gi, ' ')
     .replace(/<[^>]+>/g, '') // any remaining tags
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&quot;/gi, '"')
-    .replace(/&apos;|&#39;/gi, '’')
-    .replace(/&amp;/gi, '&')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
+    .replace(/&(nbsp|quot|apos|#39|amp|lt|gt);/gi, (entity) => {
+      const decoded: Record<string, string> = {
+        '&nbsp;': ' ',
+        '&quot;': '"',
+        '&apos;': '’',
+        '&#39;': '’',
+        '&amp;': '&',
+        '&lt;': '<',
+        '&gt;': '>',
+      };
+      return decoded[entity.toLowerCase()] ?? entity;
+    })
     .replace(/\s+/g, ' ')
     .trim();
 }

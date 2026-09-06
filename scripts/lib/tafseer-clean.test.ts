@@ -2,6 +2,10 @@ import { describe, it, expect } from 'vitest';
 import { htmlToText, previewOpening, fillSurah } from './tafseer-clean';
 
 describe('htmlToText', () => {
+  it('decodes entities once without interpreting newly exposed entities', () => {
+    expect(htmlToText('&amp;lt;نص&amp;gt; &AMP;quot;')).toBe('&lt;نص&gt; &quot;');
+  });
+
   it('strips tags and collapses whitespace', () => {
     expect(htmlToText('<p>الحمد   لله</p>\n<div>رب العالمين</div>')).toBe('الحمد لله رب العالمين');
   });
