@@ -69,6 +69,6 @@ jobs:
             set -e
             cd /opt/bots/telegram/ayah && git pull
             cd /opt/bots
+            docker image prune -f
             docker compose run --rm --build ayah-migrate
             docker compose up -d --build ayah
-            docker image prune -f
